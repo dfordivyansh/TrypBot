@@ -77,7 +77,7 @@ zope.interface==8.5
 channels-redis==4.3.0
 redis==8.0.1
 django-redis==5.4.0
-google-genai==2.2.0
+# google-genai==2.2.0
 tenacity==9.1.4
 uvicorn==0.50.0
 websockets==16.0
