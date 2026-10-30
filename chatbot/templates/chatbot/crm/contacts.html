@@ -1,0 +1,507 @@
+{% extends "chatbot/crm/base.html" %}
+{% load static %}
+{% load tz %}
+{% block title %}Contacts{% endblock %}
+
+{% block content %}
+{% include "chatbot/crm/campaigns/_common.html" %}
+{{ filters_json|json_script:"contact-filters" }}
+
+<div class="flex-1 bg-gray-100 overflow-auto">
+
+    <div class="bg-white border-b px-4 sm:px-6 py-4">
+        <div class="flex flex-col gap-4">
+            <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                <h1 class="text-2xl sm:text-3xl font-bold text-green-700">
+                    All Contacts
+                </h1>
+                <div class="flex flex-wrap gap-2">
+                    <button type="button" id="btn-import" class="btn btn-outline"><i class="fa-solid fa-file-arrow-up"></i> Import contacts</button>
+                    <a href="{% url 'crm_audience' %}" class="btn btn-outline"><i class="fa-solid fa-tags"></i> Tags &amp; Segments</a>
+                    <a href="{% url 'crm_campaign_create' %}" class="btn btn-primary"><i class="fa-solid fa-bullhorn"></i> New Campaign</a>
+                </div>
+            </div>
+
+            <form method="get" class="flex flex-col lg:flex-row lg:flex-wrap items-stretch lg:items-center gap-2">
+                <input type="text" name="q" value="{{ request.GET.q }}" placeholder="Search by name or phone..."
+                       class="border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-green-500 focus:outline-none">
+                <select name="tag" class="border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-green-500 focus:outline-none bg-white">
+                    <option value="">All tags</option>
+                    <option value="none" {% if tag_filter == 'none' %}selected{% endif %}>Untagged</option>
+                    {% for t in all_tags %}
+                    <option value="{{ t.id }}" {% if tag_filter == t.id|stringformat:"s" %}selected{% endif %}>{{ t.name }}</option>
+                    {% endfor %}
+                </select>
+                <select name="opt" class="border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-green-500 focus:outline-none bg-white">
+                    <option value="">Any subscription</option>
+                    <option value="in" {% if opt_filter == 'in' %}selected{% endif %}>Subscribed</option>
+                    <option value="out" {% if opt_filter == 'out' %}selected{% endif %}>Opted out</option>
+                </select>
+                <input type="date" name="start_date" value="{{ request.GET.start_date }}"
+                       class="border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-green-500 focus:outline-none">
+                <input type="date" name="end_date" value="{{ request.GET.end_date }}"
+                       class="border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-green-500 focus:outline-none">
+                <button type="submit"
+                        class="inline-flex items-center justify-center gap-2 bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-4.35-4.35M11 19a8 8 0 100-16 8 8 0 000 16z" />
+                    </svg>
+                    Search
+                </button>
+                {% if request.GET.q or request.GET.start_date or request.GET.end_date or tag_filter or opt_filter %}
+                <a href="{{ request.path }}"
+                   class="inline-flex items-center justify-center gap-2 bg-gray-200 hover:bg-gray-300 text-gray-700 px-4 py-2 rounded-lg text-sm font-medium transition">
+                    Clear
+                </a>
+                {% endif %}
+
+                <div class="relative" id="export-dropdown-wrap">
+                    <button type="button" id="export-dropdown-btn"
+                            class="inline-flex items-center justify-center gap-2 bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 px-4 py-2 rounded-lg text-sm font-medium transition">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5 5 5-5M12 15V3" />
+                        </svg>
+                        Export
+                    </button>
+                    <div id="export-dropdown-menu"
+                         class="hidden absolute right-0 z-10 mt-2 w-56 bg-white border rounded-lg shadow-lg py-1 text-sm">
+                        <div class="px-3 py-1.5 text-xs font-semibold text-gray-400 uppercase">All filtered contacts</div>
+                        <a href="#" data-scope="all" data-format="csv" class="export-link block px-3 py-2 hover:bg-gray-50 text-gray-700">Export as CSV</a>
+                        <a href="#" data-scope="all" data-format="txt" class="export-link block px-3 py-2 hover:bg-gray-50 text-gray-700">Export as TXT</a>
+                        <div class="border-t my-1"></div>
+                        <div class="px-3 py-1.5 text-xs font-semibold text-gray-400 uppercase">Selected rows only</div>
+                        <a href="#" data-scope="selected" data-format="csv" class="export-link block px-3 py-2 hover:bg-gray-50 text-gray-700">Export selected as CSV</a>
+                        <a href="#" data-scope="selected" data-format="txt" class="export-link block px-3 py-2 hover:bg-gray-50 text-gray-700">Export selected as TXT</a>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div class="p-4 sm:p-6">
+
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+            <div class="bg-white rounded-lg shadow p-4 flex items-center gap-4">
+                <div class="bg-green-100 text-green-700 rounded-full p-3">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                    </svg>
+                </div>
+                <div>
+                    <p class="text-sm text-gray-500">Total Contacts</p>
+                    <p class="text-2xl font-bold text-gray-800">{{ contacts.paginator.count }}</p>
+                </div>
+            </div>
+
+            <div class="bg-white rounded-lg shadow p-4 flex items-center gap-4">
+                <div class="bg-blue-100 text-blue-700 rounded-full p-3">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                    </svg>
+                </div>
+                <div>
+                    <p class="text-sm text-gray-500">Added Today</p>
+                    <p class="text-2xl font-bold text-gray-800">{{ today_count|default:"0" }}</p>
+                </div>
+            </div>
+
+            <div class="bg-white rounded-lg shadow p-4 flex items-center gap-4">
+                <div class="bg-yellow-100 text-yellow-700 rounded-full p-3">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                    </svg>
+                </div>
+                <div>
+                    <p class="text-sm text-gray-500">Current Page</p>
+                    <p class="text-2xl font-bold text-gray-800">{{ contacts.number }} / {{ contacts.paginator.num_pages }}</p>
+                </div>
+            </div>
+        </div>
+
+        {% if request.GET.start_date or request.GET.end_date %}
+        <div class="mb-4 flex items-center gap-2 text-sm text-gray-600 bg-green-50 border border-green-200 rounded-lg px-4 py-2">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+            </svg>
+            Showing results
+            {% if request.GET.start_date %}from <strong>{{ request.GET.start_date }}</strong>{% endif %}
+            {% if request.GET.end_date %}to <strong>{{ request.GET.end_date }}</strong>{% endif %}
+        </div>
+        {% endif %}
+
+        <!-- "select all matching" banner -->
+        <div id="select-all-banner" class="hidden mb-3 text-sm text-center bg-blue-50 border border-blue-200 text-blue-800 rounded-lg px-4 py-2"></div>
+
+        <div class="bg-white rounded-lg shadow overflow-hidden">
+
+            <!-- Desktop / tablet table -->
+            <div class="overflow-x-auto hidden sm:block">
+                <table class="w-full">
+
+                    <thead class="bg-gray-50">
+                        <tr>
+                            <th class="p-4 w-10">
+                                <input type="checkbox" id="select-all">
+                            </th>
+                            <th class="text-left p-4">NAME</th>
+                            <th class="text-left p-4">CONTACT</th>
+                            <th class="text-left p-4">TAGS</th>
+                            <th class="text-left p-4">CREATED ON</th>
+                            <th class="text-left p-4">ACTION</th>
+                            <th class="text-left p-4">VIEW CHAT</th>
+                        </tr>
+                    </thead>
+
+                    <tbody>
+                        {% for contact in contacts %}
+                        <tr class="border-t hover:bg-gray-50">
+
+                            <td class="p-4">
+                                <input type="checkbox" class="row-checkbox" value="{{ contact.id }}">
+                            </td>
+
+                            <td class="p-4 font-medium text-gray-800">
+                                {{ contact.user_name|default:"Unknown" }}
+                                {% if contact.marketing_opt_out %}<span class="st st-failed ml-1" title="Unsubscribed from broadcasts">Opted out</span>{% endif %}
+                            </td>
+
+                            <td class="p-4 text-gray-600">
+                                {{ contact.phone_number }}
+                            </td>
+
+                            <td class="p-4">
+                                <div class="flex flex-wrap gap-1 max-w-xs">
+                                    {% for t in contact.tags.all %}
+                                    <span class="tag-chip" style="background: {{ t.color }}22; color: {{ t.color }}; border-color: {{ t.color }}55">{{ t.name }}</span>
+                                    {% empty %}<span class="text-gray-300 text-sm">—</span>{% endfor %}
+                                </div>
+                            </td>
+
+                            <td class="p-4 text-gray-600">
+                                {{ contact.created_at|date:"d-m-Y" }}
+                            </td>
+
+                            <td class="p-4">
+                                <a href="tel:{{ contact.phone_number|slice:'-10:' }}"
+                                   class="inline-flex items-center gap-1.5 bg-green-600 hover:bg-green-700 text-white px-3 py-1.5 rounded-lg text-sm font-medium transition">
+                                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="currentColor" viewBox="0 0 20 20">
+                                        <path d="M2 3a1 1 0 011-1h2.153a1 1 0 01.986.836l.74 4.435a1 1 0 01-.54 1.06l-1.548.773a11.037 11.037 0 006.105 6.105l.774-1.548a1 1 0 011.059-.54l4.435.74a1 1 0 01.836.986V17a1 1 0 01-1 1h-2C7.82 18 2 12.18 2 5V3z" />
+                                    </svg>
+                                    Call
+                                </a>
+                            </td>
+
+                            <td class="p-4">
+                                <a href="{% url 'crm_chat_detail' contact.id %}"
+                                   class="inline-flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-lg text-sm font-medium transition">
+                                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                                    </svg>
+                                    View Chat
+                                </a>
+                            </td>
+
+                        </tr>
+                        {% empty %}
+                        <tr>
+                            <td colspan="7" class="p-6 text-center text-gray-500">
+                                No contacts found.
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+
+                </table>
+            </div>
+
+            <!-- Mobile card view -->
+            <div class="sm:hidden divide-y">
+                {% for contact in contacts %}
+                <div class="p-4">
+                    <div class="flex items-center justify-between gap-3 mb-3">
+                        <div class="flex items-center gap-3 min-w-0">
+                            <input type="checkbox" class="row-checkbox shrink-0" value="{{ contact.id }}">
+                            <div class="min-w-0">
+                                <p class="font-medium text-gray-800 truncate">{{ contact.user_name|default:"Unknown" }}
+                                    {% if contact.marketing_opt_out %}<span class="st st-failed ml-1">Opted out</span>{% endif %}</p>
+                                <p class="text-sm text-gray-500">{{ contact.phone_number }}</p>
+                                <p class="text-xs text-gray-400">{{ contact.created_at|date:"d-m-Y" }}</p>
+                                <div class="flex flex-wrap gap-1 mt-1">
+                                    {% for t in contact.tags.all %}
+                                    <span class="tag-chip" style="background: {{ t.color }}22; color: {{ t.color }}; border-color: {{ t.color }}55">{{ t.name }}</span>
+                                    {% endfor %}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="flex gap-2">
+                        <a href="tel:{{ contact.phone_number|slice:'-10:' }}"
+                           class="flex-1 inline-flex items-center justify-center gap-1.5 bg-green-600 hover:bg-green-700 text-white px-3 py-2 rounded-lg text-sm font-medium transition">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="currentColor" viewBox="0 0 20 20">
+                                <path d="M2 3a1 1 0 011-1h2.153a1 1 0 01.986.836l.74 4.435a1 1 0 01-.54 1.06l-1.548.773a11.037 11.037 0 006.105 6.105l.774-1.548a1 1 0 011.059-.54l4.435.74a1 1 0 01.836.986V17a1 1 0 01-1 1h-2C7.82 18 2 12.18 2 5V3z" />
+                            </svg>
+                            Call
+                        </a>
+                        <a href="{% url 'crm_chat_detail' contact.id %}"
+                           class="flex-1 inline-flex items-center justify-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white px-3 py-2 rounded-lg text-sm font-medium transition">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                            </svg>
+                            View Chat
+                        </a>
+                    </div>
+                </div>
+                {% empty %}
+                <div class="p-6 text-center text-gray-500">No contacts found.</div>
+                {% endfor %}
+            </div>
+
+            {% if contacts.has_other_pages %}
+            <div class="flex items-center justify-between border-t px-4 py-3 text-sm">
+                <div class="text-gray-500">
+                    Page {{ contacts.number }} of {{ contacts.paginator.num_pages }}
+                </div>
+                <div class="flex gap-2">
+                    {% if contacts.has_previous %}
+                    <a href="?page={{ contacts.previous_page_number }}{% if request.GET.q %}&q={{ request.GET.q|urlencode }}{% endif %}{% if request.GET.start_date %}&start_date={{ request.GET.start_date }}{% endif %}{% if request.GET.end_date %}&end_date={{ request.GET.end_date }}{% endif %}{% if tag_filter %}&tag={{ tag_filter }}{% endif %}{% if opt_filter %}&opt={{ opt_filter }}{% endif %}"
+                       class="px-3 py-1.5 border rounded-lg hover:bg-gray-50">Previous</a>
+                    {% endif %}
+                    {% if contacts.has_next %}
+                    <a href="?page={{ contacts.next_page_number }}{% if request.GET.q %}&q={{ request.GET.q|urlencode }}{% endif %}{% if request.GET.start_date %}&start_date={{ request.GET.start_date }}{% endif %}{% if request.GET.end_date %}&end_date={{ request.GET.end_date }}{% endif %}{% if tag_filter %}&tag={{ tag_filter }}{% endif %}{% if opt_filter %}&opt={{ opt_filter }}{% endif %}"
+                       class="px-3 py-1.5 border rounded-lg hover:bg-gray-50">Next</a>
+                    {% endif %}
+                </div>
+            </div>
+            {% endif %}
+
+        </div>
+
+    </div>
+
+    <!-- Floating bulk-action bar -->
+    <div id="bulk-bar" class="hidden sticky bottom-4 z-20 px-4 sm:px-6 pb-2">
+        <div class="max-w-4xl mx-auto bg-gray-900 text-white rounded-2xl shadow-2xl px-4 py-3 flex flex-wrap items-center gap-2 sm:gap-3">
+            <span class="text-sm font-semibold mr-1"><span id="bulk-count">0</span> selected</span>
+            <button type="button" class="btn btn-sm !bg-white/10 hover:!bg-white/20 !text-white" id="bulk-tag"><i class="fa-solid fa-tag"></i> Tags</button>
+            <button type="button" class="btn btn-sm !bg-white/10 hover:!bg-white/20 !text-white" id="bulk-optout"><i class="fa-solid fa-ban"></i> Opt out</button>
+            <button type="button" class="btn btn-sm !bg-white/10 hover:!bg-white/20 !text-white" id="bulk-optin"><i class="fa-solid fa-check"></i> Opt in</button>
+            <button type="button" class="btn btn-sm btn-primary" id="bulk-campaign"><i class="fa-solid fa-bullhorn"></i> Send campaign</button>
+            <span class="flex-1"></span>
+            <button type="button" class="text-white/70 hover:text-white text-sm" id="bulk-clear" title="Clear selection"><i class="fa-solid fa-xmark"></i></button>
+        </div>
+    </div>
+
+</div>
+
+<script>
+    /* ── export dropdown (unchanged behaviour) ── */
+    (function () {
+        const dropdownBtn  = document.getElementById('export-dropdown-btn');
+        const dropdownMenu = document.getElementById('export-dropdown-menu');
+        const dropdownWrap = document.getElementById('export-dropdown-wrap');
+
+        dropdownBtn?.addEventListener('click', function (e) {
+            e.stopPropagation();
+            dropdownMenu.classList.toggle('hidden');
+        });
+
+        document.addEventListener('click', function (e) {
+            if (dropdownWrap && !dropdownWrap.contains(e.target)) {
+                dropdownMenu.classList.add('hidden');
+            }
+        });
+
+        document.querySelectorAll('.export-link').forEach(function (link) {
+            link.addEventListener('click', function (e) {
+                e.preventDefault();
+                dropdownMenu.classList.add('hidden');
+
+                const scope  = this.dataset.scope;
+                const format = this.dataset.format;
+                const params = new URLSearchParams();
+                params.set('format', format);
+
+                if (scope === 'selected') {
+                    const ids = selectedIds();
+                    if (ids.length === 0) {
+                        alert('Please select at least one contact to export.');
+                        return;
+                    }
+                    params.set('ids', ids.join(','));
+                } else {
+                    const q          = document.querySelector('input[name="q"]')?.value || '';
+                    const startDate  = document.querySelector('input[name="start_date"]')?.value || '';
+                    const endDate    = document.querySelector('input[name="end_date"]')?.value || '';
+                    if (q) params.set('q', q);
+                    if (startDate) params.set('start_date', startDate);
+                    if (endDate) params.set('end_date', endDate);
+                }
+
+                window.location.href = "{% url 'crm_export_contacts' %}?" + params.toString();
+            });
+        });
+    })();
+</script>
+
+{{ all_tags_json|json_script:"tags-data" }}
+<div id="contact-cfg" class="hidden"
+     data-total="{{ contacts.paginator.count }}"
+     data-url-tag="{% url 'crm_contacts_tag_apply' %}"
+     data-url-opt="{% url 'crm_contacts_opt_out' %}"
+     data-url-import="{% url 'crm_contacts_import' %}"
+     data-url-campaign="{% url 'crm_campaign_create' %}"></div>
+
+{% verbatim %}
+<script>
+(function () {
+    const FILTERS = JSON.parse(document.getElementById('contact-filters').textContent);
+    const CFG = document.getElementById('contact-cfg').dataset;
+    const TOTAL = Number(CFG.total);
+    const PAGE_SIZE = document.querySelectorAll('.sm\\:block .row-checkbox').length;
+    let allMatching = false;
+
+    window.selectedIds = function () {
+        return [...new Set([...document.querySelectorAll('.row-checkbox:checked')].map(cb => +cb.value))];
+    };
+    const $ = s => document.querySelector(s);
+    const bulkBody = () => allMatching ? { select_all: true, filters: FILTERS } : { session_ids: selectedIds() };
+    const count = () => allMatching ? TOTAL : selectedIds().length;
+
+    function refresh() {
+        const n = count();
+        $('#bulk-bar').classList.toggle('hidden', n === 0);
+        $('#bulk-count').textContent = fmtNum(n);
+        const banner = $('#select-all-banner');
+        const pageIds = selectedIds().length;
+        if (!allMatching && pageIds >= PAGE_SIZE && PAGE_SIZE > 0 && TOTAL > PAGE_SIZE) {
+            banner.innerHTML = 'All ' + pageIds + ' contacts on this page are selected. <button class="underline font-semibold" id="sel-all-match">Select all ' + fmtNum(TOTAL) + ' matching contacts</button>';
+            banner.classList.remove('hidden');
+            $('#sel-all-match').onclick = () => { allMatching = true; refresh(); };
+        } else if (allMatching) {
+            banner.innerHTML = 'All ' + fmtNum(TOTAL) + ' matching contacts are selected. <button class="underline font-semibold" id="sel-clear">Clear selection</button>';
+            banner.classList.remove('hidden');
+            $('#sel-clear').onclick = clearAll;
+        } else banner.classList.add('hidden');
+    }
+    function clearAll() {
+        allMatching = false;
+        document.querySelectorAll('.row-checkbox, #select-all').forEach(cb => cb.checked = false);
+        refresh();
+    }
+
+    document.getElementById('select-all')?.addEventListener('change', function () {
+        document.querySelectorAll('.row-checkbox').forEach(cb => cb.checked = this.checked);
+        if (!this.checked) allMatching = false;
+        refresh();
+    });
+    document.querySelectorAll('.row-checkbox').forEach(cb => cb.addEventListener('change', () => {
+        if (!cb.checked) { allMatching = false; const sa = $('#select-all'); if (sa) sa.checked = false; }
+        refresh();
+    }));
+    $('#bulk-clear').onclick = clearAll;
+
+    /* ── bulk: tags ── */
+    const TAGS = JSON.parse(document.getElementById('tags-data').textContent);
+
+    $('#bulk-tag').onclick = () => {
+        let mode = 'add';
+        const sel = new Set();
+        const chips = () => TAGS.length ? TAGS.map(t => {
+            const on = sel.has(t.id);
+            const st = on ? 'background:' + t.color + ';border-color:' + t.color + ';color:#fff' : 'border-color:' + t.color + '88;color:' + t.color;
+            return '<button type="button" data-id="' + t.id + '" class="tag-chip !text-sm !px-3 !py-1" style="background:#fff;' + st + '">' + esc(t.name) + '</button>';
+        }).join(' ') : '<span class="text-sm text-gray-400">No tags yet — type a new one below.</span>';
+
+        showModal(
+            '<div class="p-6"><h3 class="text-lg font-bold text-gray-800">Tag ' + fmtNum(count()) + ' contact' + (count() === 1 ? '' : 's') + '</h3>' +
+            '<div class="inline-flex rounded-lg border border-gray-200 overflow-hidden text-sm mt-4" id="tm-mode">' +
+              '<button type="button" data-m="add" class="px-3 py-1.5 bg-brand text-white">Add tags</button>' +
+              '<button type="button" data-m="remove" class="px-3 py-1.5 bg-white text-gray-600">Remove tags</button></div>' +
+            '<div class="flex flex-wrap gap-2 mt-4" id="tm-chips"></div>' +
+            '<div id="tm-new-wrap"><input id="tm-new" class="fld mt-4" maxlength="60" placeholder="Or create a new tag…"></div>' +
+            '<p id="tm-err" class="text-xs text-red-600 mt-3 hidden"></p>' +
+            '<div class="flex justify-end gap-2 mt-5"><button class="btn btn-outline" data-close>Cancel</button><button class="btn btn-primary" id="tm-ok">Apply</button></div></div>',
+            (root, close) => {
+                const draw = () => {
+                    root.querySelector('#tm-chips').innerHTML = chips();
+                    root.querySelectorAll('#tm-chips button').forEach(b => b.onclick = () => { const id = +b.dataset.id; sel.has(id) ? sel.delete(id) : sel.add(id); draw(); });
+                };
+                draw();
+                root.querySelectorAll('#tm-mode button').forEach(b => b.onclick = () => {
+                    mode = b.dataset.m; sel.clear();
+                    root.querySelectorAll('#tm-mode button').forEach(x => x.className = 'px-3 py-1.5 ' + (x === b ? 'bg-brand text-white' : 'bg-white text-gray-600'));
+                    root.querySelector('#tm-new-wrap').classList.toggle('hidden', mode === 'remove');
+                    draw();
+                });
+                root.querySelector('#tm-ok').onclick = async () => {
+                    const newTag = root.querySelector('#tm-new').value.trim();
+                    const err = root.querySelector('#tm-err');
+                    if (!sel.size && !(mode === 'add' && newTag)) { err.textContent = 'Choose at least one tag.'; err.classList.remove('hidden'); return; }
+                    const body = Object.assign(bulkBody(), mode === 'add' ? { add: [...sel], new_tag: newTag } : { remove: [...sel] });
+                    const res = await api(CFG.urlTag, body);
+                    if (!res.success) { err.textContent = res.error; err.classList.remove('hidden'); return; }
+                    close(); toast('Updated ' + fmtNum(res.count) + ' contact' + (res.count === 1 ? '' : 's')); setTimeout(() => location.reload(), 600);
+                };
+            });
+    };
+
+    /* ── bulk: opt-out / opt-in ── */
+    async function setOpt(out) {
+        const n = count();
+        const ok = await confirmModal({
+            title: out ? 'Opt out ' + fmtNum(n) + ' contact' + (n === 1 ? '' : 's') + '?' : 'Opt in ' + fmtNum(n) + ' contact' + (n === 1 ? '' : 's') + '?',
+            message: out ? 'They will be skipped by all future campaigns. Normal one-to-one chat is not affected.'
+                         : 'Only do this if they have asked to receive broadcasts again.',
+            okText: out ? 'Opt out' : 'Opt in', danger: out });
+        if (!ok) return;
+        const res = await api(CFG.urlOpt, Object.assign(bulkBody(), { opted_out: out }));
+        if (!res.success) { toast(res.error, 'err'); return; }
+        toast('Updated ' + fmtNum(res.count) + ' contact' + (res.count === 1 ? '' : 's')); setTimeout(() => location.reload(), 600);
+    }
+    $('#bulk-optout').onclick = () => setOpt(true);
+    $('#bulk-optin').onclick = () => setOpt(false);
+
+    /* ── bulk: campaign ── */
+    $('#bulk-campaign').onclick = () => {
+        try {
+            sessionStorage.setItem('campaignSelection', JSON.stringify(allMatching ? { select_all: true, filters: FILTERS } : { ids: selectedIds() }));
+        } catch (e) { /* storage blocked — wizard simply opens empty */ }
+        window.location.href = CFG.urlCampaign + '?from=selection';
+    };
+
+    /* ── import ── */
+    $('#btn-import').onclick = () => {
+        showModal(
+            '<div class="p-6"><h3 class="text-lg font-bold text-gray-800">Import contacts</h3>' +
+            '<p class="text-xs text-gray-500 mt-1">CSV or Excel with a <b>phone</b> column. Optional columns: <b>name</b>, <b>tags</b>.</p>' +
+            '<input type="file" id="im-file" accept=".csv,.xlsx,.xlsm,.txt" class="fld mt-4">' +
+            '<input id="im-tags" class="fld mt-3" placeholder="Tag everyone with… (comma separated, optional)">' +
+            '<label class="flex items-start gap-2 text-sm text-gray-700 mt-4"><input type="checkbox" id="im-consent" class="mt-1"><span>I confirm these contacts have <b>opted in</b> to receive WhatsApp messages from us.</span></label>' +
+            '<p id="im-err" class="text-xs text-red-600 mt-3 hidden"></p>' +
+            '<div class="flex justify-end gap-2 mt-5"><button class="btn btn-outline" data-close>Cancel</button><button class="btn btn-primary" id="im-ok">Import</button></div></div>',
+            (root, close) => {
+                const err = root.querySelector('#im-err'), ok = root.querySelector('#im-ok');
+                const fail = m => { err.textContent = m; err.classList.remove('hidden'); };
+                ok.onclick = async () => {
+                    const f = root.querySelector('#im-file').files[0];
+                    if (!f) return fail('Please choose a file.');
+                    if (!root.querySelector('#im-consent').checked) return fail('Please confirm the opt-in statement.');
+                    const fd = new FormData();
+                    fd.append('file', f); fd.append('tags', root.querySelector('#im-tags').value); fd.append('consent', 'true');
+                    ok.disabled = true; ok.textContent = 'Importing…';
+                    const res = await api(CFG.urlImport, fd);
+                    ok.disabled = false; ok.textContent = 'Import';
+                    if (!res.success) return fail(res.error);
+                    close();
+                    toast(fmtNum(res.created) + ' new, ' + fmtNum(res.existing) + ' already existed' + (res.invalid ? ', ' + res.invalid + ' invalid rows skipped' : ''));
+                    setTimeout(() => location.reload(), 1200);
+                };
+            });
+    };
+
+    refresh();
+})();
+</script>
+{% endverbatim %}
+
+{% endblock %}

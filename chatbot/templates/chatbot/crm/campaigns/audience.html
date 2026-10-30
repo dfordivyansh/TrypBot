@@ -1,0 +1,174 @@
+{% extends "chatbot/crm/base.html" %}
+{% block title %}Tags & Segments | TrypBot CRM{% endblock %}
+
+{% block content %}
+{% include "chatbot/crm/campaigns/_common.html" %}
+
+<div class="flex flex-col h-full overflow-hidden">
+
+  <div class="bg-white border-b border-gray-200 px-4 md:px-6 py-4">
+    <div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+      <div>
+        <a href="{% url 'crm_campaign_list' %}" class="text-xs text-gray-500 hover:text-gray-800"><i class="fa-solid fa-arrow-left"></i> Campaigns</a>
+        <h1 class="text-lg md:text-xl font-bold text-gray-800 mt-0.5">Tags &amp; Segments</h1>
+        <p class="text-xs md:text-sm text-gray-500">Organise contacts with tags and save filters you reuse for campaigns</p>
+      </div>
+      <a href="{% url 'crm_campaign_create' %}" class="btn btn-primary self-start md:self-auto"><i class="fa-solid fa-plus"></i> New Campaign</a>
+    </div>
+  </div>
+
+  <div class="flex-1 overflow-y-auto p-4 md:p-6 bg-gray-100">
+    <div class="max-w-6xl mx-auto grid lg:grid-cols-2 gap-5 items-start">
+
+      <!-- TAGS -->
+      <section class="card p-5">
+        <div class="flex items-center justify-between mb-4">
+          <h2 class="font-semibold text-gray-800"><i class="fa-solid fa-tags text-brand-dark"></i> Tags <span class="text-gray-400 font-normal text-sm">({{ tags|length }})</span></h2>
+        </div>
+
+        <form id="tag-form" class="flex flex-col sm:flex-row gap-2 mb-2">
+          <input id="tag-name" class="fld" maxlength="60" placeholder="New tag name, e.g. Honeymoon" required>
+          <button class="btn btn-primary" type="submit"><i class="fa-solid fa-plus"></i> Add</button>
+        </form>
+        <div class="flex flex-wrap gap-1.5 mb-5" id="tag-colors">
+          {% for c in colors %}
+          <button type="button" class="w-6 h-6 rounded-full border-2 {% if forloop.first %}border-gray-800{% else %}border-transparent{% endif %}" data-color="{{ c }}" style="background: {{ c }}" title="{{ c }}"></button>
+          {% endfor %}
+        </div>
+
+        {% if tags %}
+        <ul class="divide-y divide-gray-100" id="tag-list">
+          {% for t in tags %}
+          <li class="py-2.5 flex items-center gap-3" data-id="{{ t.id }}" data-name="{{ t.name }}" data-color="{{ t.color }}">
+            <span class="tag-chip" style="background: {{ t.color }}22; color: {{ t.color }}; border-color: {{ t.color }}55">{{ t.name }}</span>
+            <a href="{% url 'crm_contacts' %}?tag={{ t.id }}" class="text-xs text-gray-500 hover:text-brand-dark">{{ t.contact_count }} contact{{ t.contact_count|pluralize }}</a>
+            <span class="flex-1"></span>
+            {% if can_manage %}
+            <button class="text-gray-400 hover:text-gray-700 js-edit" title="Edit"><i class="fa-solid fa-pen"></i></button>
+            <button class="text-gray-400 hover:text-red-600 js-del" title="Delete"><i class="fa-solid fa-trash"></i></button>
+            {% endif %}
+          </li>
+          {% endfor %}
+        </ul>
+        {% else %}
+        <p class="text-sm text-gray-400 text-center py-6">No tags yet. Create one above, then apply it from the Contacts page or when importing a file.</p>
+        {% endif %}
+      </section>
+
+      <!-- SEGMENTS -->
+      <section class="space-y-5">
+        <div class="card p-5">
+          <div class="flex items-center justify-between mb-4">
+            <h2 class="font-semibold text-gray-800"><i class="fa-solid fa-layer-group text-brand-dark"></i> Segments <span class="text-gray-400 font-normal text-sm">({{ segments|length }})</span></h2>
+          </div>
+
+          {% if segments %}
+          <ul class="space-y-3">
+            {% for s in segments %}
+            <li class="border border-gray-200 rounded-xl p-3.5" data-seg="{{ s.id }}">
+              <div class="flex items-start justify-between gap-3">
+                <div class="min-w-0">
+                  <p class="font-semibold text-gray-800">{{ s.name }}</p>
+                  {% if s.description %}<p class="text-xs text-gray-500">{{ s.description }}</p>{% endif %}
+                </div>
+                <div class="text-right shrink-0">
+                  <p class="text-lg font-bold text-emerald-600 leading-none">{{ s.count }}</p>
+                  <p class="text-[10px] text-gray-400">contacts</p>
+                </div>
+              </div>
+              <div class="flex flex-wrap gap-1 mt-2">
+                {% for chip in s.chips %}<span class="st st-sent">{{ chip }}</span>{% endfor %}
+                {% if s.opted_out %}<span class="st st-paused">{{ s.opted_out }} opted out</span>{% endif %}
+              </div>
+              <div class="flex items-center justify-between mt-3">
+                <span class="text-[11px] text-gray-400">{% if s.created_by %}by {{ s.created_by }} · {% endif %}{{ s.created_at|date:"d M Y" }}</span>
+                <div class="flex gap-2">
+                  <a href="{% url 'crm_campaign_create' %}?segment={{ s.id }}" class="btn btn-outline btn-sm"><i class="fa-solid fa-bullhorn"></i> Use in campaign</a>
+                  <button class="btn btn-outline btn-sm !text-red-600 !border-red-200 js-seg-del"><i class="fa-solid fa-trash"></i></button>
+                </div>
+              </div>
+            </li>
+            {% endfor %}
+          </ul>
+          {% else %}
+          <div class="text-center py-6">
+            <p class="text-sm text-gray-500">No saved segments yet.</p>
+            <p class="text-xs text-gray-400 mt-1">In the campaign wizard, build a filter and choose <b>Save as segment</b>.</p>
+            <a href="{% url 'crm_campaign_create' %}" class="btn btn-outline btn-sm mt-3">Open campaign wizard</a>
+          </div>
+          {% endif %}
+        </div>
+
+        <div class="card p-5">
+          <h2 class="font-semibold text-gray-800 mb-1"><i class="fa-solid fa-ban text-amber-500"></i> Opt-outs</h2>
+          <p class="text-sm text-gray-600"><b class="text-gray-800">{{ opted_out_total }}</b> contact{{ opted_out_total|pluralize }} unsubscribed from broadcasts.</p>
+          <p class="text-xs text-gray-500 mt-2">Customers who reply <b>STOP</b> are unsubscribed automatically and skipped by every campaign. They can rejoin by replying <b>SUBSCRIBE</b>. You can also change a contact’s status from the Contacts page.</p>
+          <a href="{% url 'crm_contacts' %}?opt=out" class="btn btn-outline btn-sm mt-3">View opted-out contacts</a>
+        </div>
+      </section>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+(function () {
+  const URL_SAVE = "{% url 'crm_tag_save' %}";
+  const url = (tpl, id) => tpl.replace('/0/', '/' + id + '/');
+  const URL_TAG_DEL = "{% url 'crm_tag_delete' 0 %}";
+  const URL_SEG_DEL = "{% url 'crm_segment_delete' 0 %}";
+  let color = document.querySelector('#tag-colors button').dataset.color;
+
+  document.querySelectorAll('#tag-colors button').forEach(b => b.onclick = () => {
+    color = b.dataset.color;
+    document.querySelectorAll('#tag-colors button').forEach(x => x.className = 'w-6 h-6 rounded-full border-2 ' + (x === b ? 'border-gray-800' : 'border-transparent'));
+  });
+
+  document.getElementById('tag-form').onsubmit = async e => {
+    e.preventDefault();
+    const name = document.getElementById('tag-name').value.trim();
+    if (!name) return;
+    const res = await api(URL_SAVE, { name, color });
+    if (!res.success) { toast(res.error, 'err'); return; }
+    location.reload();
+  };
+
+  document.querySelectorAll('.js-del').forEach(b => b.onclick = async () => {
+    const li = b.closest('li');
+    if (!await confirmModal({ title: 'Delete tag “' + li.dataset.name + '”?', message: 'It will be removed from every contact. Contacts themselves are not deleted.', okText: 'Delete tag', danger: true })) return;
+    const res = await api(url(URL_TAG_DEL, li.dataset.id), {});
+    if (!res.success) { toast(res.error, 'err'); return; }
+    li.remove(); toast('Tag deleted');
+  });
+
+  document.querySelectorAll('.js-edit').forEach(b => b.onclick = () => {
+    const li = b.closest('li'), palette = [...document.querySelectorAll('#tag-colors button')].map(x => x.dataset.color);
+    let c = li.dataset.color;
+    showModal(
+      '<div class="p-6"><h3 class="text-lg font-bold text-gray-800">Edit tag</h3>' +
+      '<input id="et-name" class="fld mt-4" maxlength="60" value="' + esc(li.dataset.name) + '">' +
+      '<div class="flex flex-wrap gap-1.5 mt-3" id="et-colors">' + palette.map(p => '<button type="button" data-color="' + p + '" class="w-6 h-6 rounded-full border-2 ' + (p === c ? 'border-gray-800' : 'border-transparent') + '" style="background:' + p + '"></button>').join('') + '</div>' +
+      '<p id="et-err" class="text-xs text-red-600 mt-2 hidden"></p>' +
+      '<div class="flex justify-end gap-2 mt-5"><button class="btn btn-outline" data-close>Cancel</button><button class="btn btn-primary" id="et-ok">Save</button></div></div>',
+      (root) => {
+        root.querySelectorAll('#et-colors button').forEach(x => x.onclick = () => { c = x.dataset.color;
+          root.querySelectorAll('#et-colors button').forEach(y => y.className = 'w-6 h-6 rounded-full border-2 ' + (y === x ? 'border-gray-800' : 'border-transparent')); });
+        root.querySelector('#et-ok').onclick = async () => {
+          const res = await api(URL_SAVE, { id: +li.dataset.id, name: root.querySelector('#et-name').value, color: c });
+          if (!res.success) { const e = root.querySelector('#et-err'); e.textContent = res.error; e.classList.remove('hidden'); return; }
+          location.reload();
+        };
+      });
+  });
+
+  document.querySelectorAll('.js-seg-del').forEach(b => b.onclick = async () => {
+    const li = b.closest('li');
+    if (!await confirmModal({ title: 'Delete this segment?', message: 'Campaigns already created from it are not affected.', okText: 'Delete', danger: true })) return;
+    const res = await api(url(URL_SEG_DEL, li.dataset.seg), {});
+    if (!res.success) { toast(res.error, 'err'); return; }
+    li.remove(); toast('Segment deleted');
+  });
+})();
+</script>
+{% endblock %}

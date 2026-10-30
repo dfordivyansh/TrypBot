@@ -1,0 +1,3521 @@
+{% extends "chatbot/crm/base.html" %}
+{% load static %}
+
+{% block title %}{% if active_session %}{{ active_session.user_name|default:active_session.phone_number }} — {% endif %}TrypBot CRM{% endblock %}
+
+{% block mobile_bar %}{% endblock %}
+
+{% block extra_head %}
+<style>
+
+/* ═══════════════════════════════════════════════
+   ROOT LAYOUT
+════════════════════════════════════════════════ */
+html, body {
+  height: 100%;
+  overflow: hidden;
+}
+.crm-shell {
+  display: flex;
+  height: 100%;
+  overflow: hidden;
+  position: relative;
+}
+
+/* ═══════════════════════════════════════════════
+   LEFT SIDEBAR
+════════════════════════════════════════════════ */
+#conv-drawer {
+  width: 320px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+  background: #fff;
+  border-right: 1px solid #e5e7eb;
+  transition: transform 0.3s cubic-bezier(.4,0,.2,1);
+}
+@media (max-width: 767px) {
+  #conv-drawer {
+    position: fixed;
+    inset: 0 auto 0 0;
+    width: 85vw;
+    max-width: 360px;
+    z-index: 60;
+    transform: translateX(-100%);
+  }
+  #conv-drawer.open { transform: translateX(0); }
+}
+@media (min-width: 1024px) {
+  #conv-drawer { width: 360px; }
+}
+.sidebar-header { flex-shrink: 0; }
+
+/* Conversation rows (_conv_items.html) */
+.conv-label-pill {
+  display: block; width: 100%; text-align: center; color: #fff;
+  font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em;
+  padding: 2px 6px; border-radius: 9999px 0 0 9999px; margin-right: -12px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.conv-row .conv-label-pill { border: 0; }
+#convSentinel { padding: 14px 0; text-align: center; font-size: 12px; color: #9ca3af; }
+
+/* Mobile: /crm/ opens straight on the chat list, like a chat app */
+.crm-appbar { display: none; }
+@media (max-width: 767px) {
+  #conv-drawer.as-page {
+    position: relative; inset: auto; width: 100%; max-width: none;
+    transform: none; z-index: 1; flex: 1 1 0; border-right: 0;
+  }
+  #conv-drawer.as-page .crm-appbar { display: flex; }
+  #conv-drawer.as-page .crm-toolbar { display: none; }
+  #conv-drawer.as-page.show-filters .crm-toolbar { display: flex; }
+  #conv-drawer.as-page #searchWrap { display: block !important; background: #00a86b; border: 0; padding: 0 12px 12px; }
+  #conv-drawer.as-page #searchWrap input { border-radius: 10px; padding-top: 10px; padding-bottom: 10px; font-size: 15px; }
+  #conv-drawer.as-page #searchWrap button { display: none; }
+  #emptyChatState { display: none !important; }
+}
+
+/* "Select Filters" sheet */
+.fs-backdrop { position: fixed; inset: 0; z-index: 75; background: rgba(0,0,0,.45); display: none; align-items: center; justify-content: center; padding: 16px; }
+.fs-backdrop.open { display: flex; }
+.att-backdrop { position: fixed; inset: 0; z-index: 74; background: rgba(0,0,0,.45); display: none; align-items: flex-end; justify-content: center; }
+.att-backdrop.open { display: flex; }
+.att-sheet { background: #fff; width: 100%; max-width: 560px; border-radius: 18px 18px 0 0; padding: 22px 10px 10px; }
+.att-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 4px; }
+.att-grid button { display: flex; flex-direction: column; align-items: center; gap: 8px; font-size: 13px; color: #111827; }
+.att-grid button span { width: 50px; height: 50px; border-radius: 9999px; display: flex; align-items: center; justify-content: center; color: #fff; font-size: 19px; }
+.att-handle { width: 140px; height: 4px; border-radius: 9999px; background: #9ca3af; margin: 18px auto 2px; }
+@media (max-width: 380px) { .att-grid { grid-template-columns: repeat(3, 1fr); row-gap: 16px; } }
+.tpl-row { display: flex; flex-direction: column; align-items: flex-start; gap: 3px; width: 100%; text-align: left; padding: 12px 10px; border-bottom: 1px solid #e5e7eb; }
+.tpl-row:hover:not(:disabled) { background: #f0fdf4; }
+.tpl-row:disabled { opacity: .6; cursor: not-allowed; }
+.fs-card { background: #fff; width: 100%; max-width: 420px; max-height: 92dvh; overflow-y: auto; border-radius: 28px; padding: 26px 22px 18px; }
+.fs-title { color: #00a86b; font-size: 26px; font-weight: 800; margin-bottom: 18px; }
+.fs-label { display: block; font-size: 15px; font-weight: 700; color: #111827; margin: 14px 0 6px; }
+.fs-field { width: 100%; border: 1px solid #9ca3af; border-radius: 6px; padding: 12px 14px; font-size: 16px; background: #fff; outline: none; }
+.fs-field:focus { border-color: #00a86b; }
+.fs-date { display: flex; align-items: center; gap: 8px; border: 1px solid #9ca3af; border-radius: 6px; padding: 6px 10px; flex: 1; min-width: 0; }
+.fs-date i { color: #00a86b; font-size: 20px; }
+.fs-date input { border: 0; outline: none; font-size: 15px; width: 100%; min-width: 0; background: transparent; }
+.fs-labels-box { border: 1px solid #9ca3af; border-radius: 6px; padding: 10px; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; min-height: 64px; }
+.fs-chip { color: #fff; font-size: 11px; font-weight: 700; text-transform: uppercase; padding: 4px 10px; border-radius: 9999px; display: inline-flex; gap: 6px; align-items: center; }
+.fs-add { margin-left: auto; background: #00a86b; color: #fff; border-radius: 9999px; padding: 9px 18px; font-weight: 600; font-size: 16px; box-shadow: 0 4px 10px -4px rgba(0,0,0,.4); }
+.fs-actions { display: flex; justify-content: flex-end; gap: 28px; margin-top: 26px; }
+.fs-actions button { color: #00a86b; font-weight: 600; font-size: 17px; }
+.fs-pick-row { display: flex; align-items: center; justify-content: space-between; padding: 14px 6px; font-size: 16px; letter-spacing: .03em; }
+.fs-pick-row input { width: 22px; height: 22px; accent-color: #00a86b; }
+.fs-badge { position: absolute; top: -4px; right: -6px; background: #fff; color: #00a86b; font-size: 10px; font-weight: 800; border-radius: 9999px; min-width: 16px; height: 16px; display: flex; align-items: center; justify-content: center; }
+
+/* Phone chat header */
+.ph-select {
+  flex: 1; min-width: 0; appearance: none; -webkit-appearance: none;
+  border: 0; border-radius: 6px; padding: 5px 26px 5px 10px; font-size: 14px; font-weight: 600; color: #111827;
+  background: #fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8'%3E%3Cpath d='M0 0l6 8 6-8z' fill='%23555'/%3E%3C/svg%3E") no-repeat right 10px center;
+}
+@media (min-width: 768px) { .ph-selects .ph-select { flex: 0 0 auto; width: 170px; } }
+#phMenu button { display: block; width: 100%; text-align: left; padding: 14px 18px; font-size: 16px; }
+#phMenu button:hover { background: #f3f4f6; }
+.ph-toast { position: fixed; left: 50%; bottom: 90px; transform: translateX(-50%); z-index: 95; background: #111827; color: #fff; padding: 10px 16px; border-radius: 10px; font-size: 14px; }
+
+/* "+" button and the Add New Chat sheet */
+#newChatFab {
+  position: fixed; right: 20px; bottom: 24px; z-index: 40;
+  width: 56px; height: 56px; border-radius: 18px; background: #00a86b; color: #fff;
+  display: flex; align-items: center; justify-content: center; font-size: 22px;
+  box-shadow: 0 8px 20px -6px rgba(0,0,0,.35);
+}
+#newChatFab:hover { background: #009660; }
+@media (max-width: 767px) {
+  #newChatFab { bottom: calc(24px + env(safe-area-inset-bottom, 0px)); }
+  #newChatFab.in-sidebar { display: none; }   /* phone: not on an open chat */
+}
+/* Desktop with a chat open: bottom-right corner of the chat list column */
+#newChatFab.in-sidebar { right: auto; left: calc(68px + 320px - 76px); }
+@media (min-width: 1024px) { #newChatFab.in-sidebar { left: calc(68px + 360px - 76px); } }
+#newChatSheet { position: fixed; inset: 0; z-index: 70; display: none; background: rgba(0,0,0,.4); }
+#newChatSheet.open { display: flex; align-items: center; justify-content: center; }
+#newChatSheet .sheet {
+  background: #fff; width: 100%; max-width: 440px; max-height: 100%; overflow-y: auto;
+  border-radius: 16px; position: relative; display: flex; flex-direction: column;
+}
+@media (max-width: 767px) {
+  #newChatSheet .sheet { max-width: none; height: 100%; border-radius: 0; }
+}
+#newChatSheet .nc-box { border: 1px solid #00a86b; border-radius: 12px; padding: 14px; margin: 10px 12px 0; }
+#newChatSheet .nc-input {
+  width: 100%; background: #eee; border: 1px solid #d1d5db; border-radius: 14px;
+  padding: 13px 14px; font-size: 15px; outline: none;
+}
+#newChatSheet .nc-input:focus { border-color: #00a86b; background: #fff; }
+
+#convList {
+  flex: 1 1 0;
+  min-height: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+}
+#convList::-webkit-scrollbar { width: 4px; }
+#convList::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 4px; }
+
+.date-divider {
+  position: sticky; top: 0; z-index: 5;
+  background: #f9fafb; border-bottom: 1px solid #f3f4f6;
+  padding: 6px 12px; font-size: 11px; font-weight: 700;
+  color: #6b7280; text-transform: uppercase; letter-spacing: .04em;
+}
+
+.call-btn {
+  width: 28px; height: 28px; border-radius: 9999px; display: flex; align-items: center;
+  justify-content: center; background: #f0fdf4; color: #16a34a; border: 1px solid #bbf7d0;
+  flex-shrink: 0; transition: .15s;
+}
+.call-btn:hover { background: #dcfce7; }
+
+.call-btn-lg {
+  width: 36px; height: 36px; border-radius: 9999px; display: flex; align-items: center;
+  justify-content: center; background: rgba(255,255,255,0.12); color: #fff;
+  flex-shrink: 0; transition: .15s;
+}
+.call-btn-lg:hover { background: rgba(255,255,255,0.22); }
+
+/* ═══════════════════════════════════════════════
+   CHAT WINDOW
+════════════════════════════════════════════════ */
+#chatWindow {
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+#chatTopBar,
+#chatStatusBar,
+#filePreviewStrip,
+#inputBarWrap { flex-shrink: 0; }
+
+#chatMessages {
+  flex: 1 1 0;
+  min-height: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  background-color: #efeae2;
+  background-image: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23c8bfb0' fill-opacity='0.18'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
+  padding: 12px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+/* ═══════════════════════════════════════════════
+   MESSAGE BUBBLE — COPY ON HOVER
+════════════════════════════════════════════════ */
+.msg-row {
+  position: relative;
+}
+
+/* Copy button that appears on hover */
+.msg-copy-btn {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 28px;
+  height: 28px;
+  border-radius: 9999px;
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s, background 0.15s;
+  border: none;
+  outline: none;
+  flex-shrink: 0;
+  z-index: 10;
+  backdrop-filter: blur(4px);
+}
+.msg-copy-btn:hover { background: rgba(0, 0, 0, 0.75); }
+.msg-row:hover .msg-copy-btn { opacity: 1; }
+
+/* Position: outgoing (right side) → button appears to the LEFT of bubble */
+.msg-row-out .msg-copy-btn  { right: auto; left: -36px; }
+/* Position: incoming (left side) → button appears to the RIGHT of bubble */
+.msg-row-in  .msg-copy-btn  { left: auto; right: -36px; }
+
+/* Copy toast feedback */
+.copy-flash {
+  position: absolute;
+  top: -28px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #1f2937;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: 6px;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  animation: copyFlash 1.4s ease forwards;
+  z-index: 20;
+}
+@keyframes copyFlash {
+  0%   { opacity: 0; transform: translateX(-50%) translateY(4px); }
+  20%  { opacity: 1; transform: translateX(-50%) translateY(0); }
+  75%  { opacity: 1; }
+  100% { opacity: 0; transform: translateX(-50%) translateY(-4px); }
+}
+
+/* ═══════════════════════════════════════════════
+   INPUT BAR
+════════════════════════════════════════════════ */
+#inputBarWrap {
+  background: #fff;
+  border-top: 1px solid #f3f4f6;
+  padding: 8px;
+  padding-bottom: max(8px, env(safe-area-inset-bottom));
+  position: relative;
+  z-index: 1;
+}
+@media (max-width: 767px) {
+  #chatMessages { padding-bottom: 8px; overflow-anchor: auto; }
+}
+
+/* ═══════════════════════════════════════════════
+   FILE PREVIEW STRIP
+════════════════════════════════════════════════ */
+#filePreviewStrip { overflow-x: auto; scrollbar-width: none; }
+#filePreviewStrip::-webkit-scrollbar { display: none; }
+
+/* ═══════════════════════════════════════════════
+   LABEL BADGE COLOURS
+════════════════════════════════════════════════ */
+.lbl-HOT        { background:#fee2e2; color:#dc2626; border:1px solid #fca5a5; }
+.lbl-WARM       { background:#fef9c3; color:#ca8a04; border:1px solid #fde047; }
+.lbl-COLD       { background:#dbeafe; color:#2563eb; border:1px solid #93c5fd; }
+.lbl-INTERESTED { background:#dcfce7; color:#16a34a; border:1px solid #86efac; }
+.lbl-FOLLOWUP   { background:#ede9fe; color:#7c3aed; border:1px solid #c4b5fd; }
+.lbl-PENDING    { background:#ffedd5; color:#c2410c; border:1px solid #fdba74; }
+.lbl-PAID       { background:#d1fae5; color:#065f46; border:1px solid #6ee7b7; }
+.lbl-CLOSED     { background:#f3f4f6; color:#6b7280; border:1px solid #d1d5db; }
+
+/* ═══════════════════════════════════════════════
+   SIDE PANEL
+════════════════════════════════════════════════ */
+#sidePanel { transition: transform 0.3s cubic-bezier(.4,0,.2,1); }
+
+/* ═══════════════════════════════════════════════
+   TEXTAREA AUTO-GROW
+════════════════════════════════════════════════ */
+#msgInput { min-height: 20px; max-height: 120px; resize: none; }
+
+/* ═══════════════════════════════════════════════
+   EMOJI PICKER
+════════════════════════════════════════════════ */
+#emojiPicker {
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  z-index: 100;
+  margin-bottom: 8px;
+}
+
+/* ═══════════════════════════════════════════════
+   HIDDEN FILE INPUTS
+════════════════════════════════════════════════ */
+#cameraInput, #fileInput { display: none; }
+
+/* ═══════════════════════════════════════════════
+   MESSAGE TAILS
+════════════════════════════════════════════════ */
+.msg-out { border-bottom-right-radius: 2px !important; }
+.msg-in  { border-bottom-left-radius:  2px !important; }
+
+/* ═══════════════════════════════════════════════
+   TYPING ANIMATION
+════════════════════════════════════════════════ */
+@keyframes dot-bounce {
+  0%, 60%, 100% { transform: translateY(0); }
+  30%           { transform: translateY(-4px); }
+}
+.typing-dot:nth-child(1) { animation: dot-bounce 1s infinite 0s; }
+.typing-dot:nth-child(2) { animation: dot-bounce 1s infinite .15s; }
+.typing-dot:nth-child(3) { animation: dot-bounce 1s infinite .3s; }
+
+/* ═══════════════════════════════════════════════
+   ACTIVE CONV ITEM
+════════════════════════════════════════════════ */
+.conv-item-active {
+  background: rgba(220, 248, 198, 0.6);
+  border-left: 3px solid #25D366;
+}
+
+/* ═══════════════════════════════════════════════
+   MEDIA BUBBLES
+════════════════════════════════════════════════ */
+.msg-img {
+  max-width: 100%;
+  max-height: 240px;
+  border-radius: 10px;
+  object-fit: cover;
+  display: block;
+  margin-bottom: 4px;
+  cursor: pointer;
+}
+.msg-video {
+  max-width: 100%;
+  max-height: 240px;
+  border-radius: 10px;
+  display: block;
+  margin-bottom: 4px;
+}
+.msg-file-block {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(0,0,0,0.06);
+  border-radius: 8px;
+  padding: 8px 10px;
+  margin-bottom: 4px;
+  text-decoration: none;
+}
+.msg-file-block .file-icon {
+  width: 32px; height: 32px; border-radius: 6px;
+  background: #128C7E; color: #fff;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0; font-size: 14px;
+}
+.msg-file-block .file-meta { display: flex; flex-direction: column; min-width: 0; }
+.msg-file-block .file-name { font-size: 12px; color: #1f2937; font-weight: 600; word-break: break-all; line-height: 1.3; }
+.msg-file-block .file-sub  { font-size: 10px; color: #6b7280; }
+
+/* ═══════════════════════════════════════════════
+   UPLOAD PROGRESS
+════════════════════════════════════════════════ */
+.upload-progress {
+  height: 3px; background: #25D366; border-radius: 2px;
+  transition: width 0.2s; margin-top: 4px;
+}
+
+/* ═══════════════════════════════════════════════
+   IMAGE LIGHTBOX
+════════════════════════════════════════════════ */
+#imgLightbox {
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,0.85);
+  z-index: 80; display: none;
+  align-items: center; justify-content: center; padding: 16px;
+}
+#imgLightbox.open { display: flex; }
+#imgLightbox img { max-width: 100%; max-height: 90vh; border-radius: 8px; }
+#imgLightbox .lightbox-close {
+  position: absolute; top: 16px; right: 16px;
+  width: 40px; height: 40px; border-radius: 9999px;
+  background: rgba(255,255,255,0.15); color: #fff;
+  display: flex; align-items: center; justify-content: center;
+}
+
+/* ═══════════════════════════════════════════════
+   EMPTY STATE
+════════════════════════════════════════════════ */
+#emptyChatState {
+  flex: 1; display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  color: #9ca3af; background: #f9fafb;
+}
+
+/* ═══════════════════════════════════════════════
+   WS TOAST NOTIFICATION
+════════════════════════════════════════════════ */
+#wsToastContainer {
+  position: fixed; top: 16px; right: 16px;
+  z-index: 9999; display: flex; flex-direction: column; gap: 8px;
+  pointer-events: none;
+}
+.ws-toast {
+  background: #1f2937; color: #fff;
+  border-radius: 12px; padding: 10px 14px;
+  font-size: 13px; max-width: 300px;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+  display: flex; align-items: flex-start; gap: 10px;
+  animation: toastIn 0.3s ease;
+  pointer-events: auto;
+}
+.ws-toast.hot   { border-left: 4px solid #ef4444; }
+.ws-toast.msg   { border-left: 4px solid #25D366; }
+.ws-toast.rem   { border-left: 4px solid #3b82f6; }
+@keyframes toastIn {
+  from { opacity: 0; transform: translateX(40px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+</style>
+{% endblock %}
+
+
+{% block content %}
+
+<!-- WS Toast Container -->
+<div id="wsToastContainer"></div>
+
+<div class="crm-shell">
+
+<!-- ─── Mobile drawer overlay ─── -->
+<div class="fixed inset-0 bg-black/40 z-50 hidden" id="drawerOverlay" onclick="closeConvDrawer()"></div>
+
+<!-- ─── Image lightbox ─── -->
+<div id="imgLightbox" onclick="closeLightbox(event)">
+  <button class="lightbox-close" onclick="closeLightbox(event)">
+    <i class="fa-solid fa-xmark"></i>
+  </button>
+  <img id="lightboxImg" src="" alt="preview">
+</div>
+
+
+<!-- ═══════════════════════════════════════════════
+     CONVERSATION LIST SIDEBAR
+════════════════════════════════════════════════ -->
+<div id="conv-drawer" class="{% if not active_session %}as-page{% endif %}">
+
+  <!-- Mobile app bar (list page) -->
+  <div class="sidebar-header crm-appbar items-center justify-between px-4 py-3 bg-[#00a86b] text-white">
+    <button type="button" onclick="toggleCrmNav(true)" aria-label="Menu" class="p-1">
+      <i class="fa-solid fa-bars text-xl"></i>
+    </button>
+    <span class="text-xl font-extrabold tracking-wide flex-1 text-center">TRYPBOT</span>
+    <button type="button" onclick="hardRefresh(this.firstElementChild)" class="p-1 mr-3" aria-label="Hard refresh" title="Hard refresh">
+      <i class="fa-solid fa-rotate-right text-lg"></i>
+    </button>
+    <button type="button" onclick="openFilterSheet()" class="p-1 relative" aria-label="Filters">
+      <i class="fa-solid fa-filter text-lg"></i>
+      {% if list_filters_on %}<span class="fs-badge">{{ list_filters_on }}</span>{% endif %}
+    </button>
+  </div>
+
+  {% if active_session %}
+  <!-- Mobile header -->
+  <div class="sidebar-header md:hidden flex items-center justify-between px-3 py-2.5 bg-[#075e54] text-white">
+    <div class="flex items-center gap-2">
+      <div class="w-7 h-7 rounded-full bg-white/20 flex items-center justify-center">
+        <i class="fa-brands fa-whatsapp text-sm"></i>
+      </div>
+      <span class="font-semibold text-sm">Conversations</span>
+    </div>
+    <button onclick="closeConvDrawer()" class="text-white/80 hover:text-white p-1">
+      <i class="fa-solid fa-xmark text-lg"></i>
+    </button>
+  </div>
+  {% endif %}
+
+  <!-- Toolbar -->
+  <div class="sidebar-header crm-toolbar flex items-center gap-1.5 px-3 py-2 border-b border-gray-100 bg-white">
+    <div class="relative">
+      <select id="filterSelect" onchange="applyFilter(this.value)"
+        class="appearance-none bg-white border border-gray-200 rounded-lg pl-3 pr-7 py-1.5
+               text-xs text-gray-700 font-medium outline-none cursor-pointer hover:border-gray-300">
+        <option value="all"    {% if active_filter == 'all' %}selected{% endif %}>All Open</option>
+        <option value="open"   {% if active_filter == 'open' %}selected{% endif %}>Open Only</option>
+        <option value="closed" {% if active_filter == 'closed' %}selected{% endif %}>Closed</option>
+        <option value="human"  {% if active_filter == 'human' %}selected{% endif %}>Human Takeover</option>
+        {% for label in labels %}
+        <option value="{{ label.name|lower }}"
+          {% if active_filter == label.name|lower %}selected{% endif %}>{{ label.name }}</option>
+        {% endfor %}
+      </select>
+      <i class="fa-solid fa-chevron-down absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 text-[9px] pointer-events-none"></i>
+    </div>
+
+    <button onclick="toggleSearch()"
+      class="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-500">
+      <i class="fa-solid fa-magnifying-glass text-sm"></i>
+    </button>
+
+    <button type="button" onclick="openFilterSheet()" title="More filters"
+      class="relative w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 {% if list_filters_on %}text-[#00a86b]{% else %}text-gray-500{% endif %}">
+      <i class="fa-solid fa-sliders text-sm"></i>
+      {% if list_filters_on %}<span class="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-[#00a86b]"></span>{% endif %}
+    </button>
+
+    <!-- Date filter -->
+    <input type="date" id="dateFilterInput"
+      value="{{ selected_date|date:'Y-m-d'|default:'' }}"
+      onchange="applyDateFilter(this.value)"
+      class="bg-white border border-gray-200 rounded-lg pl-2 pr-1 py-1.5
+             text-xs text-gray-700 font-medium outline-none cursor-pointer
+             hover:border-gray-300 w-[110px]" />
+
+    <div class="flex-1"></div>
+  </div>
+
+  {% if date_filter_active %}
+  <div class="sidebar-header flex items-center justify-between px-3 py-1.5 bg-blue-50 border-b border-blue-100">
+    <span class="text-xs text-blue-600 font-medium">
+      <i class="fa-regular fa-calendar text-[10px] mr-1"></i>Showing: {{ selected_date|date:"d M Y" }}
+    </span>
+    <a href="{% if active_session %}{% url 'crm_chat_detail' active_session.id %}{% else %}{% url 'crm_chat_home' %}{% endif %}?filter={{ active_filter }}"
+       class="text-xs text-blue-500 hover:underline font-medium">Clear</a>
+  </div>
+  {% endif %}
+
+  <!-- Search bar -->
+  <div class="sidebar-header hidden px-3 py-2 border-b border-gray-100 bg-gray-50" id="searchWrap">
+    <form method="get"
+      action="{% if active_session %}{% url 'crm_chat_detail' active_session.id %}{% else %}{% url 'crm_chat_home' %}{% endif %}"
+      class="flex items-center gap-2">
+      <div class="flex-1 relative">
+        <i class="fa-solid fa-search absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-xs"></i>
+        <input type="text" name="q" value="{{ search_q }}" id="searchInput"
+          placeholder="Search name or number..."
+          class="w-full pl-8 pr-3 py-1.5 border border-gray-200 rounded-lg text-sm outline-none bg-white
+                 focus:border-[#25D366] focus:ring-2 focus:ring-[#25D366]/20" />
+      </div>
+      <button type="submit"
+        class="px-3 py-1.5 bg-[#25D366] text-white text-xs font-semibold rounded-lg hover:bg-[#128C7E]">Go</button>
+    </form>
+  </div>
+
+  {% if list_filters_on %}
+  <div class="sidebar-header flex items-center justify-between px-3 py-2 bg-emerald-50 border-b border-emerald-100">
+    <button type="button" onclick="openFilterSheet()" class="text-xs text-emerald-700 font-semibold">
+      <i class="fa-solid fa-filter text-[10px] mr-1"></i>Filters applied ({{ list_filters_on }})
+    </button>
+    <button type="button" onclick="clearListFilters()" class="text-xs text-emerald-700 hover:underline font-semibold">Clear</button>
+  </div>
+  {% endif %}
+
+  <!-- Conversation list grouped by date -->
+  <div id="convList">
+    {% include "chatbot/crm/_conv_items.html" %}
+    {% if not sessions %}
+    <div class="flex flex-col items-center justify-center py-16 text-gray-400">
+      <i class="fa-regular fa-comment-dots text-3xl mb-2"></i>
+      <p class="text-sm">No conversations found.</p>
+    </div>
+    {% endif %}
+    {% if conv_next_url %}
+    <div id="convSentinel" data-next="{{ conv_next_url }}">Loading more chats…</div>
+    {% endif %}
+  </div>
+
+</div>
+<!-- END CONV SIDEBAR -->
+
+
+{% if active_session %}
+<!-- ═══════════════════════════════════════════════
+     CHAT WINDOW
+════════════════════════════════════════════════ -->
+<div id="chatWindow">
+
+  <!-- Top bar -->
+  <!-- Chat header (Cunekt style, phone and desktop): name + number, bot/human, note, call, menu; agent + label below -->
+  <div id="phoneChatBar" class="flex-shrink-0">
+    <div class="flex flex-wrap items-center gap-x-3 gap-y-2 px-3 py-2 bg-[#00a86b] text-white">
+      <a href="{% url 'crm_chat_home' %}{% if list_qs %}?{{ list_qs }}{% endif %}" aria-label="Back to chats" class="md:hidden">
+        <i class="fa-solid fa-arrow-left text-xl"></i>
+      </a>
+      <div class="flex-1 min-w-0">
+        <div id="phName" class="font-bold text-[17px] leading-tight truncate">{{ active_session.user_name|default:active_session.phone_number|default:"Unknown" }}</div>
+        <button type="button" onclick="renameChat()" class="flex items-center gap-1.5 text-sm text-white/90 mt-0.5" aria-label="Edit name">
+          {{ active_session.phone_number|default:"No phone" }} <i class="fa-solid fa-pencil text-yellow-300 text-xs"></i>
+        </button>
+      </div>
+      <!-- Agent + label: own thin line on phone, next to the icons on desktop -->
+      <div class="ph-selects order-last w-full flex gap-2 md:order-none md:w-auto">
+        <select id="phAssign" class="ph-select" onchange="assignChat(this.value); phToast('Chat assigned')">
+          <option value="">Assign To</option>
+          {% for u in sales_users %}
+          <option value="{{ u.id }}" {% if active_session.assigned_sales_person_id == u.id %}selected{% endif %}>{{ u.get_full_name|default:u.username }}</option>
+          {% endfor %}
+        </select>
+        <select id="phLabel" class="ph-select" onchange="updateLabel(this.value); phToast('Label updated')">
+          <option value="">Label</option>
+          {% for lbl in labels %}
+          <option value="{{ lbl.id }}" {% if conv_status.label and conv_status.label.id == lbl.id %}selected{% endif %}>{{ lbl.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="flex flex-col items-end flex-shrink-0">
+        <div class="flex items-center gap-4">
+          <button type="button" id="phBotIcon" onclick="phToggleBot()"
+                  aria-label="{% if active_session.is_human_takeover %}Human mode: tap to turn the bot on{% else %}Bot mode: tap to switch to human{% endif %}"
+                  class="w-8 h-8 rounded-full bg-white flex items-center justify-center shadow">
+            {% if active_session.is_human_takeover %}<i class="fa-solid fa-user-tie text-[#2563eb] text-base"></i>
+            {% else %}<i class="fa-solid fa-robot text-[#7c3aed] text-base"></i>{% endif %}
+          </button>
+          <button type="button" onclick="openNoteSheet()" aria-label="Add note" class="text-yellow-300">
+            <i class="fa-solid fa-file-circle-plus text-xl"></i>
+          </button>
+          {% if active_session.phone_number %}
+          <a href="tel:{{ active_session.phone_number|slice:'-10:' }}" aria-label="Call"><i class="fa-solid fa-phone text-xl"></i></a>
+          {% endif %}
+          <div class="relative">
+            <button type="button" onclick="togglePhMenu(event)" aria-label="More" class="px-1"><i class="fa-solid fa-ellipsis-vertical text-xl"></i></button>
+            <div id="phMenu" class="hidden absolute right-0 top-8 bg-white text-gray-800 rounded-lg shadow-2xl min-w-[190px] z-50 overflow-hidden">
+              <button type="button" id="phCloseBtn" onclick="phToggleClose()">{% if conv_status.closed %}Reopen Chat{% else %}Close Chat{% endif %}</button>
+              <button type="button" id="phBlockBtn" onclick="phToggleBlock()">{% if active_session.data.blocked %}Unblock Chat{% else %}Block Chat{% endif %}</button>
+              <button type="button" onclick="openPanel('notes')">Notes</button>
+              <button type="button" onclick="openPanel('reminders')">Reminders</button>
+              <button type="button" onclick="openPanel('engagement')">Engagement Metrics</button>
+              <button type="button" onclick="hardRefresh()"><i class="fa-solid fa-rotate-right mr-1"></i> Hard Refresh</button>
+            </div>
+          </div>
+        </div>
+        <div id="phStatus" class="text-sm mt-1 text-white/95">
+          {% if active_session.data.blocked %}blocked{% elif conv_status.closed %}closed{% else %}open{% endif %} ({{ active_session.id|stringformat:"06d" }})
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="chatTopBar"
+       class="hidden items-center justify-between px-2 sm:px-3 py-2 bg-[#075e54] text-white shadow-md gap-2">
+
+    <div class="flex items-center gap-2 min-w-0">
+      <!-- Back goes to the chat list page (not the slide-in drawer) -->
+      <a href="{% url 'crm_chat_home' %}{% if list_qs %}?{{ list_qs }}{% endif %}" aria-label="Back to chats"
+        class="md:hidden flex-shrink-0 w-8 h-8 flex items-center justify-center text-white/80 hover:text-white rounded-full hover:bg-white/10">
+        <i class="fa-solid fa-arrow-left text-sm"></i>
+      </a>
+      <div class="w-9 h-9 rounded-full bg-[#128C7E] flex items-center justify-center text-white font-bold flex-shrink-0 text-sm">
+        {% if active_session.user_name %}{{ active_session.user_name|slice:":1"|upper }}
+        {% else %}<i class="fa-solid fa-user text-sm"></i>{% endif %}
+      </div>
+      <div class="min-w-0">
+        <div class="font-semibold text-white text-sm truncate leading-tight">
+          {{ active_session.user_name|default:"Unknown" }}
+        </div>
+        <div class="text-xs text-white/70 truncate leading-tight">
+          {{ active_session.phone_number|default:"No phone" }}
+        </div>
+      </div>
+    </div>
+
+    <!-- Right controls -->
+    <div class="flex items-center gap-1 flex-shrink-0">
+
+      <!-- Spam Risk Indicators -->
+      {% if engagement %}
+        {% if engagement.quality_score < 30 %}
+        <div class="hidden sm:flex items-center gap-1 bg-red-500/20 border border-red-400/30 rounded px-2 py-1 text-xs text-white" title="Low Quality Score: {{ engagement.quality_score }}/100">
+          <i class="fa-solid fa-triangle-exclamation text-red-300"></i>
+          <span class="font-semibold">{{ engagement.quality_score }}</span>
+        </div>
+        {% elif engagement.quality_score < 60 %}
+        <div class="hidden sm:flex items-center gap-1 bg-yellow-500/20 border border-yellow-400/30 rounded px-2 py-1 text-xs text-white" title="Medium Quality Score: {{ engagement.quality_score }}/100">
+          <i class="fa-solid fa-circle-exclamation text-yellow-300"></i>
+          <span class="font-semibold">{{ engagement.quality_score }}</span>
+        </div>
+        {% else %}
+        <div class="hidden sm:flex items-center gap-1 bg-green-500/20 border border-green-400/30 rounded px-2 py-1 text-xs text-white" title="Good Quality Score: {{ engagement.quality_score }}/100">
+          <i class="fa-solid fa-check-circle text-green-300"></i>
+          <span class="font-semibold">{{ engagement.quality_score }}</span>
+        </div>
+        {% endif %}
+      {% endif %}
+
+      <!-- Active Alert Warning -->
+      {% if active_alert %}
+        <div class="hidden sm:flex items-center gap-1 bg-red-600 border border-red-400 rounded px-2 py-1 text-xs text-white animate-pulse" title="{{ active_alert.risk_type|title }}: {{ active_alert.description }}">
+          <i class="fa-solid fa-ban"></i>
+          <span class="font-semibold">{{ active_alert.risk_level|upper }}</span>
+        </div>
+      {% endif %}
+
+      <!-- Opt-in Status -->
+      {% if not has_opt_in and active_session.phone_number %}
+        <div class="hidden sm:flex items-center gap-1 bg-orange-500/20 border border-orange-400/30 rounded px-2 py-1 text-xs text-white" title="No opt-in record">
+          <i class="fa-solid fa-user-slash text-orange-300"></i>
+          <span class="font-semibold">No Opt-in</span>
+        </div>
+      {% endif %}
+
+      <div class="hidden sm:flex items-center gap-1 bg-white/10 rounded px-2 py-1 text-xs text-white/80 font-mono">
+        <i class="fa-solid fa-ticket text-[10px]"></i>
+        {{ active_session.id|stringformat:"06d" }}
+      </div>
+
+      {% if active_session.phone_number %}
+      <a href="tel:{{ active_session.phone_number|slice:'-10:' }}"
+         title="Call {{ active_session.phone_number }}" class="call-btn-lg">
+        <i class="fa-solid fa-phone text-sm"></i>
+      </a>
+      {% endif %}
+
+      <!-- Label -->
+      <div class="relative">
+        <select id="labelSelect" onchange="updateLabel(this.value)"
+          class="appearance-none bg-white/10 hover:bg-white/20 border border-white/20 rounded-lg pl-2 pr-6 py-1.5
+                 text-xs text-white font-semibold outline-none cursor-pointer w-[100px] sm:w-[120px]">
+          <option value="" class="text-gray-800 bg-white">Label</option>
+          {% for lbl in labels %}
+          <option value="{{ lbl.id }}" class="text-gray-800 bg-white"
+            {% if conv_status.label and conv_status.label.id == lbl.id %}selected{% endif %}>
+            {{ lbl.name }}
+          </option>
+          {% endfor %}
+        </select>
+        <i class="fa-solid fa-chevron-down absolute right-1.5 top-1/2 -translate-y-1/2 text-white/60 text-[9px] pointer-events-none"></i>
+      </div>
+
+      <!-- Assign (desktop) -->
+      <div class="relative hidden sm:block">
+        <select id="assignSelect" onchange="assignChat(this.value)"
+          class="appearance-none bg-white/10 hover:bg-white/20 border border-white/20 rounded-lg pl-2 pr-6 py-1.5
+                 text-xs text-white font-medium outline-none cursor-pointer w-[110px]">
+          <option value="" class="text-gray-800 bg-white">
+            {% if active_session.assigned_sales_person %}
+              {{ active_session.assigned_sales_person.get_full_name|default:active_session.assigned_sales_person.username }}
+            {% else %}Assign To{% endif %}
+          </option>
+          {% for u in sales_users %}
+          <option value="{{ u.id }}" class="text-gray-800 bg-white"
+            {% if active_session.assigned_sales_person and active_session.assigned_sales_person.id == u.id %}selected{% endif %}>
+            {{ u.get_full_name|default:u.username }}
+          </option>
+          {% endfor %}
+        </select>
+        <i class="fa-solid fa-chevron-down absolute right-1.5 top-1/2 -translate-y-1/2 text-white/60 text-[9px] pointer-events-none"></i>
+      </div>
+
+      <!-- Notes -->
+      <button onclick="openPanel('notes')"
+        class="w-8 h-8 flex items-center justify-center rounded-full hover:bg-white/10 text-yellow-300 transition">
+        <i class="fa-solid fa-note-sticky text-sm"></i>
+      </button>
+
+      <!-- More menu -->
+      <div class="relative" id="moreMenuWrap">
+        <button onclick="toggleMoreMenu()"
+          class="w-8 h-8 flex items-center justify-center rounded-full hover:bg-white/10 text-white transition">
+          <i class="fa-solid fa-ellipsis-vertical text-sm"></i>
+        </button>
+        <div id="moreMenu"
+             class="hidden absolute right-0 top-full mt-1 bg-white rounded-xl shadow-2xl border border-gray-100 overflow-hidden z-50 min-w-[200px]">
+
+          <!-- Human Takeover -->
+          <button id="humanTakeoverBtn" onclick="toggleHumanTakeover()"
+            class="w-full flex items-center gap-3 px-4 py-3 text-sm hover:bg-gray-50 transition text-left
+                   {% if active_session.is_human_takeover %}text-blue-600{% else %}text-gray-700{% endif %}">
+            {% if active_session.is_human_takeover %}
+              <i class="fa-solid fa-user-check w-4 text-blue-500"></i>
+              <div><div class="font-semibold">Human ON</div><div class="text-xs text-gray-400">Bot is paused</div></div>
+              <i class="fa-solid fa-toggle-on text-blue-500 ml-auto text-lg"></i>
+            {% else %}
+              <i class="fa-solid fa-robot w-4 text-green-500"></i>
+              <div><div class="font-semibold">AI Mode</div><div class="text-xs text-gray-400">Bot is active</div></div>
+              <i class="fa-solid fa-toggle-off text-gray-300 ml-auto text-lg"></i>
+            {% endif %}
+          </button>
+
+          <div class="border-t border-gray-100"></div>
+
+          <!-- Close / Reopen -->
+          <button id="closeTicketBtn" onclick="toggleCloseTicket()"
+            class="w-full flex items-center gap-3 px-4 py-3 text-sm hover:bg-gray-50 transition text-left
+                   {% if conv_status.closed %}text-green-600{% else %}text-red-600{% endif %}">
+            {% if conv_status.closed %}
+              <i class="fa-solid fa-folder-open w-4"></i>
+              <div><div class="font-semibold">Reopen Ticket</div><div class="text-xs text-gray-400">Ticket is closed</div></div>
+            {% else %}
+              <i class="fa-solid fa-circle-xmark w-4"></i>
+              <div><div class="font-semibold">Close Ticket</div><div class="text-xs text-gray-400">Mark as resolved</div></div>
+            {% endif %}
+          </button>
+
+          <div class="border-t border-gray-100"></div>
+
+          <!-- Engagement Metrics -->
+          <button onclick="openPanel('engagement'); toggleMoreMenu()"
+            class="w-full flex items-center gap-3 px-4 py-3 text-sm hover:bg-gray-50 transition text-left text-gray-700">
+            <i class="fa-solid fa-chart-line w-4 text-purple-400"></i>
+            <div><div class="font-semibold">Engagement Metrics</div><div class="text-xs text-gray-400">Quality & risk analysis</div></div>
+          </button>
+
+          <div class="border-t border-gray-100"></div>
+
+          <!-- Reminders -->
+          <button onclick="openPanel('reminders'); toggleMoreMenu()"
+            class="w-full flex items-center gap-3 px-4 py-3 text-sm hover:bg-gray-50 transition text-left text-gray-700">
+            <i class="fa-solid fa-bell w-4 text-blue-400"></i>
+            <div><div class="font-semibold">Reminders</div><div class="text-xs text-gray-400">Set follow-up</div></div>
+          </button>
+
+          <div class="border-t border-gray-100"></div>
+
+          <!-- Assign (mobile) -->
+          <div class="sm:hidden">
+            <div class="px-4 py-2 text-xs text-gray-400 font-semibold uppercase tracking-wide">Assign To</div>
+            {% for u in sales_users %}
+            <button onclick="assignChat('{{ u.id }}'); toggleMoreMenu()"
+              class="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50
+                     {% if active_session.assigned_sales_person and active_session.assigned_sales_person.id == u.id %}bg-green-50 text-green-700{% endif %}">
+              <div class="w-6 h-6 rounded-full bg-gray-200 flex items-center justify-center text-xs font-bold">
+                {{ u.username|slice:":1"|upper }}
+              </div>
+              {{ u.get_full_name|default:u.username }}
+              {% if active_session.assigned_sales_person and active_session.assigned_sales_person.id == u.id %}
+              <i class="fa-solid fa-check ml-auto text-green-500"></i>
+              {% endif %}
+            </button>
+            {% endfor %}
+          </div>
+
+        </div>
+      </div>
+
+    </div>
+  </div>
+  <!-- END TOP BAR -->
+
+  <!-- Status bar -->
+  <div id="chatStatusBar"
+       class="hidden items-center gap-2 px-3 py-1.5 bg-white border-b border-gray-100 text-xs">
+    <div id="statusIndicator"
+         class="flex items-center gap-1.5 px-2 py-0.5 rounded-full font-semibold
+                {% if active_session.is_human_takeover %}bg-blue-50 text-blue-600 border border-blue-200{% else %}bg-green-50 text-green-700 border border-green-200{% endif %}">
+      {% if active_session.is_human_takeover %}
+        <i class="fa-solid fa-user-check text-[10px]"></i> Human Mode
+      {% else %}
+        <i class="fa-solid fa-robot text-[10px]"></i> AI Active
+      {% endif %}
+    </div>
+    <div class="flex items-center gap-1 text-gray-500">
+      <i class="fa-solid fa-ticket text-[#25D366] text-[10px]"></i>
+      <span>#{{ active_session.id|stringformat:"06d" }}</span>
+    </div>
+    {% if conv_status.closed %}
+    <div id="closedBadge"
+         class="flex items-center gap-1 bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full border border-gray-200 font-semibold">
+      <i class="fa-solid fa-lock text-[10px]"></i> Closed
+    </div>
+    {% endif %}
+    <div class="flex-1"></div>
+    {% if active_session.assigned_sales_person %}
+    <div class="flex items-center gap-1 text-gray-400">
+      <i class="fa-solid fa-user-tie text-[10px]"></i>
+      <span>{{ active_session.assigned_sales_person.username }}</span>
+    </div>
+    {% endif %}
+    <!-- WS connection dot -->
+    <div id="wsStatus" class="flex items-center gap-1 text-gray-300" title="Realtime: connecting…">
+      <span class="w-2 h-2 rounded-full bg-gray-300 inline-block" id="wsDot"></span>
+    </div>
+  </div>
+
+  <!-- Website booking / ad lead-form details: pinned under the header (collapsible) -->
+  {% if lead_forms %}
+  <div id="pinnedLeadCards" class="flex-shrink-0 bg-white border-b border-emerald-100 max-h-[45vh] overflow-y-auto">
+    {% for lf in lead_forms %}
+    <details class="group border-b border-emerald-50 last:border-b-0">
+      <summary class="flex items-center gap-2 px-3 py-1.5 cursor-pointer list-none bg-emerald-50 text-xs select-none">
+        <span class="font-semibold text-emerald-800 whitespace-nowrap">📋 {{ lf.heading|default:"Lead Form Answers" }} · {{ lf.source }}</span>
+        {% if lf.campaign %}<span class="truncate text-gray-700">{{ lf.campaign }}</span>{% endif %}
+        <i class="fa-solid fa-chevron-down ml-auto text-emerald-700 text-[10px] transition group-open:rotate-180"></i>
+      </summary>
+      <div class="px-3 py-2 text-xs text-gray-700 grid sm:grid-cols-2 gap-x-6 gap-y-1.5">
+        {% if lf.received %}<div><span class="text-gray-400">Received:</span> {{ lf.received|date:"d M Y, h:i A" }}</div>{% endif %}
+        {% if lf.ad %}<div><span class="text-gray-400">Ad:</span> {{ lf.ad }}</div>{% endif %}
+        {% for q, a in lf.answers %}
+        <div class="min-w-0"><span class="text-gray-400">{{ q }}:</span> <span class="font-medium break-words">{{ a }}</span></div>
+        {% empty %}
+        <div class="text-gray-400 italic">No extra form questions were answered.</div>
+        {% endfor %}
+      </div>
+    </details>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  <!-- Messages area -->
+  <div id="chatMessages">
+
+
+    {% for msg in messages %}
+
+    {% if forloop.first %}
+    <div class="flex justify-center my-3">
+      <span class="bg-[#e0f2f1]/80 text-[#00695c] text-[11px] px-3 py-1 rounded-full shadow-sm font-medium">
+        {{ msg.created_at|date:"d F Y" }}
+      </span>
+    </div>
+    {% endif %}
+
+    {% if msg.sender_type == 'user' %}
+    <!-- ── Incoming message ── -->
+    <div class="flex justify-start mb-1 msg-row msg-row-in relative" data-msg-id="{{ msg.id }}">
+      <div class="max-w-[85%] sm:max-w-[65%] relative">
+        <div class="bg-white rounded-xl msg-in px-3 py-2 shadow-sm relative">
+          <svg class="absolute -left-2 top-0 w-4 h-4 text-white fill-current" viewBox="0 0 8 13">
+            <path d="M5.188 1H0v11.193l1.467-1.625C3.929 7.625 5.188 4.625 5.188 1z" fill="white" stroke="#e5e7eb" stroke-width="0.5"/>
+          </svg>
+
+          {% if msg.media_type == 'image' %}
+            <img src="{% if msg.media_url %}{{ msg.media_url }}{% else %}{% url 'crm_media_proxy' msg.id %}{% endif %}"
+                 class="msg-img" onclick="openLightbox(this.src)" alt="image">
+            {% if msg.message %}<p class="text-sm text-gray-800 leading-relaxed whitespace-pre-wrap break-words mt-1 msg-text-content">{{ msg.message }}</p>{% endif %}
+          {% elif msg.media_type == 'video' %}
+            <video src="{% if msg.media_url %}{{ msg.media_url }}{% else %}{% url 'crm_media_proxy' msg.id %}{% endif %}"
+                   controls class="msg-video"></video>
+            {% if msg.message %}<p class="text-sm text-gray-800 leading-relaxed whitespace-pre-wrap break-words mt-1 msg-text-content">{{ msg.message }}</p>{% endif %}
+          {% elif msg.media_type == 'audio' %}
+            <audio controls class="w-full mb-1"
+                   src="{% if msg.media_url %}{{ msg.media_url }}{% else %}{% url 'crm_media_proxy' msg.id %}{% endif %}"></audio>
+          {% elif msg.media_type == 'document' %}
+            <a href="{% if msg.media_url %}{{ msg.media_url }}{% else %}{% url 'crm_media_proxy' msg.id %}{% endif %}"
+               target="_blank" class="msg-file-block">
+              <div class="file-icon"><i class="fa-solid fa-file-pdf"></i></div>
+              <div class="file-meta">
+                <span class="file-name">{{ msg.media_filename|default:msg.message }}</span>
+                <span class="file-sub">Tap to open</span>
+              </div>
+            </a>
+            {% if msg.message and msg.message != msg.media_filename %}
+            <p class="text-sm text-gray-800 leading-relaxed whitespace-pre-wrap break-words mt-1 msg-text-content">{{ msg.message }}</p>
+            {% endif %}
+          {% else %}
+            <p class="text-sm text-gray-800 leading-relaxed whitespace-pre-wrap break-words msg-text-content">{{ msg.message }}</p>
+          {% endif %}
+
+          <div class="text-[10px] text-gray-400 mt-1 text-right">{{ msg.created_at|date:"h:i A" }}</div>
+        </div>
+
+        <!-- Copy button — appears to the right of incoming bubble -->
+        <button class="msg-copy-btn" onclick="copyMessage(this, '{{ msg.message|escapejs }}')" title="Copy message">
+          <i class="fa-regular fa-copy text-[11px]"></i>
+        </button>
+      </div>
+    </div>
+
+    {% elif msg.sender_type == 'bot' or msg.sender_type == 'sales' or msg.sender_type == 'agent' %}
+    <!-- ── Outgoing message ── -->
+    <div class="flex justify-end mb-1 msg-row msg-row-out relative" data-msg-id="{{ msg.id }}">
+      <div class="max-w-[85%] sm:max-w-[65%] relative">
+
+        <!-- Copy button — appears to the left of outgoing bubble -->
+        <button class="msg-copy-btn" onclick="copyMessage(this, '{{ msg.message|escapejs }}')" title="Copy message">
+          <i class="fa-regular fa-copy text-[11px]"></i>
+        </button>
+
+        <div class="bg-[#dcf8c6] rounded-xl msg-out px-3 py-2 shadow-sm relative">
+          <svg class="absolute -right-2 top-0 w-4 h-4 fill-current text-[#dcf8c6]" viewBox="0 0 8 13">
+            <path d="M2.812 1H8v11.193L6.533 9.568C4.071 7.625 2.812 4.625 2.812 1z" fill="#dcf8c6"/>
+          </svg>
+          {% if msg.sender_type == 'bot' %}
+          <div class="text-[10px] text-[#128C7E] font-semibold mb-0.5">🤖 TrypBot AI</div>
+          {% elif active_session.assigned_sales_person %}
+          <div class="text-[10px] text-[#128C7E] font-semibold mb-0.5">
+            {{ active_session.assigned_sales_person.get_full_name|default:active_session.assigned_sales_person.username }}
+          </div>
+          {% endif %}
+
+          {% if msg.media_type == 'image' %}
+            <img src="{% if msg.media_url %}{{ msg.media_url }}{% else %}{% url 'crm_media_proxy' msg.id %}{% endif %}"
+                 class="msg-img" onclick="openLightbox(this.src)" alt="image">
+            {% if msg.message %}<p class="text-sm text-gray-800 leading-relaxed whitespace-pre-wrap break-words mt-1 msg-text-content">{{ msg.message }}</p>{% endif %}
+          {% elif msg.media_type == 'video' %}
+            <video src="{% if msg.media_url %}{{ msg.media_url }}{% else %}{% url 'crm_media_proxy' msg.id %}{% endif %}"
+                   controls class="msg-video"></video>
+            {% if msg.message %}<p class="text-sm text-gray-800 leading-relaxed whitespace-pre-wrap break-words mt-1 msg-text-content">{{ msg.message }}</p>{% endif %}
+          {% elif msg.media_type == 'audio' %}
+            <audio controls class="w-full mb-1"
+                   src="{% if msg.media_url %}{{ msg.media_url }}{% else %}{% url 'crm_media_proxy' msg.id %}{% endif %}"></audio>
+          {% elif msg.media_type == 'document' %}
+            <a href="{% if msg.media_url %}{{ msg.media_url }}{% else %}{% url 'crm_media_proxy' msg.id %}{% endif %}"
+               target="_blank" class="msg-file-block">
+              <div class="file-icon"><i class="fa-solid fa-file-pdf"></i></div>
+              <div class="file-meta">
+                <span class="file-name">{{ msg.media_filename|default:msg.message }}</span>
+                <span class="file-sub">Tap to open</span>
+              </div>
+            </a>
+            {% if msg.message and msg.message != msg.media_filename %}
+            <p class="text-sm text-gray-800 leading-relaxed whitespace-pre-wrap break-words mt-1 msg-text-content">{{ msg.message }}</p>
+            {% endif %}
+          {% else %}
+            <p class="text-sm text-gray-800 leading-relaxed whitespace-pre-wrap break-words msg-text-content">{{ msg.message }}</p>
+          {% endif %}
+
+          <div class="flex items-center justify-end gap-1 mt-1">
+            <span class="text-[10px] text-gray-500">{{ msg.created_at|date:"h:i A" }}</span>
+            <span class="msg-status text-xs leading-none" data-status="{{ msg.message_status|default:'sent' }}">
+              {% if msg.message_status == 'sent' %}
+                <i class="fa-solid fa-check text-gray-400"></i>
+              {% elif msg.message_status == 'delivered' %}
+                <i class="fa-solid fa-check-double text-[#4db0f5]"></i>
+              {% elif msg.message_status == 'read' %}
+                <i class="fa-solid fa-check-double text-blue-500"></i>
+              {% elif msg.message_status == 'failed' %}
+                <button type="button" class="fail-btn" title="Why was this not delivered?" onclick="showFailReason(this)"
+                  data-reason="{{ msg.fail_reason|default:'' }}" data-fix="{{ msg.fail_fix|default:'' }}"
+                  data-code="{{ msg.fail_code|default:'' }}" data-guess="{% if msg.fail_guess %}1{% endif %}">
+                  <i class="fa-solid fa-circle-exclamation text-red-500"></i>
+                </button>
+              {% else %}
+                <i class="fa-solid fa-check text-gray-400"></i>
+              {% endif %}
+            </span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    {% elif msg.raw_payload.delivery_error %}
+    <!-- TrypBot: why a message was not delivered -->
+    <div class="flex justify-center my-2 px-2" data-msg-id="{{ msg.id }}" data-delivery-note="1">
+      <div class="max-w-[92%] sm:max-w-[70%] bg-red-50 border border-red-200 rounded-xl px-3 py-2 shadow-sm text-[13px] leading-snug">
+        <div class="flex items-center gap-1.5 font-semibold text-red-700 mb-1">
+          <i class="fa-solid fa-robot text-[#7c3aed]"></i> TrypBot · {{ msg.raw_payload.delivery_error.what|default:"Message" }} not delivered
+          {% if msg.raw_payload.delivery_error.code %}<span class="text-[10px] font-normal text-red-400">(error {{ msg.raw_payload.delivery_error.code }})</span>{% endif %}
+        </div>
+        <div class="text-gray-800"><span class="font-semibold">Reason:</span> {{ msg.raw_payload.delivery_error.reason }}</div>
+        <div class="text-gray-800 mt-1"><span class="font-semibold text-[#00a86b]">How to fix:</span> {{ msg.raw_payload.delivery_error.fix }}</div>
+        <div class="text-[10px] text-gray-400 text-right mt-1">{{ msg.created_at|date:"m/d/Y H:i" }}</div>
+      </div>
+    </div>
+
+    {% else %}
+    <!-- System message -->
+    <div class="flex justify-center my-2" data-msg-id="{{ msg.id }}">
+      <span class="bg-[#e0f2f1]/70 border border-[#b2dfdb] text-[#00695c] text-xs px-3 py-1 rounded-full shadow-sm">
+        {{ msg.message }}
+      </span>
+    </div>
+    {% endif %}
+
+    {% empty %}
+    <div class="flex flex-col items-center justify-center text-gray-400 py-16">
+      <div class="w-16 h-16 rounded-full bg-gray-200 flex items-center justify-center mb-3">
+        <i class="fa-brands fa-whatsapp text-3xl text-gray-400"></i>
+      </div>
+      <p class="text-sm font-medium text-gray-500">No messages yet</p>
+      <p class="text-xs text-gray-400 mt-1">Start the conversation below</p>
+    </div>
+    {% endfor %}
+
+    <!-- Typing indicator -->
+    <div class="flex justify-start mb-1 hidden" id="typingIndicator">
+      <div class="bg-white rounded-xl px-4 py-3 shadow-sm">
+        <div class="flex gap-1.5 items-center">
+          <div class="w-2 h-2 bg-gray-400 rounded-full typing-dot"></div>
+          <div class="w-2 h-2 bg-gray-400 rounded-full typing-dot"></div>
+          <div class="w-2 h-2 bg-gray-400 rounded-full typing-dot"></div>
+        </div>
+      </div>
+    </div>
+
+    <div id="msgBottom"></div>
+  </div>
+  <!-- END MESSAGES AREA -->
+
+  <!-- File preview strip -->
+  <div id="filePreviewStrip" class="hidden bg-white border-t border-gray-200 px-3 py-2 flex gap-2"></div>
+
+  <!-- Input bar -->
+  <div id="inputBarWrap">
+    <div id="emojiPicker" class="hidden"></div>
+
+    <input type="file" id="fileInput" multiple
+      accept="image/*,video/*,audio/*,application/pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.zip"
+      onchange="handleFileSelect(this.files)">
+    <input type="file" id="cameraInput" accept="image/*" capture="environment"
+      onchange="handleFileSelect(this.files)">
+    <!-- One input per attach-sheet option, so the phone opens the right picker -->
+    <input type="file" id="docInput" class="hidden" multiple
+      accept="application/pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.zip"
+      onchange="handleFileSelect(this.files); this.value=''">
+    <input type="file" id="videoInput" class="hidden" multiple accept="video/*"
+      onchange="handleFileSelect(this.files); this.value=''">
+    <input type="file" id="galleryInput" class="hidden" multiple accept="image/*"
+      onchange="handleFileSelect(this.files); this.value=''">
+    <input type="file" id="audioInput" class="hidden" multiple accept="audio/*"
+      onchange="handleFileSelect(this.files); this.value=''">
+
+    <!-- Normal messaging input -->
+    <div id="normalMessagingInput" class="flex items-end gap-1.5">
+      <button onclick="toggleEmojiInput()" title="Emoji"
+        class="flex-shrink-0 w-9 h-9 flex items-center justify-center rounded-full text-gray-500 hover:bg-gray-100 transition">
+        <i class="fa-regular fa-face-smile text-xl text-[#8696a0]"></i>
+      </button>
+
+      <div class="flex-1 min-w-0 bg-[#f0f2f5] rounded-3xl px-4 py-2 flex items-end gap-2 min-h-[40px]">
+        <textarea
+          id="msgInput"
+          placeholder="Message"
+          rows="1"
+          onkeydown="handleMsgKeydown(event)"
+          oninput="autoResize(this)"
+          onfocus="setTimeout(() => { const m = document.getElementById('chatMessages'); if (m) m.scrollTop = m.scrollHeight; }, 350)"
+          class="flex-1 min-w-0 w-full border-0 outline-none bg-transparent text-sm text-gray-800
+                 placeholder-gray-400 leading-relaxed overflow-y-auto"
+          style="min-height:24px; max-height:120px;"
+        ></textarea>
+      </div>
+
+      <div class="flex items-center gap-1 flex-shrink-0">
+        <button onclick="openAttachSheet()" title="Attach"
+          class="w-9 h-9 flex items-center justify-center rounded-full text-[#8696a0] hover:bg-gray-100 transition">
+          <i class="fa-solid fa-paperclip text-lg"></i>
+        </button>
+        <button onclick="document.getElementById('cameraInput').click()" title="Camera"
+          class="w-9 h-9 flex items-center justify-center rounded-full text-[#8696a0] hover:bg-gray-100 transition">
+          <i class="fa-solid fa-camera text-lg"></i>
+        </button>
+        <button id="sendBtn" onclick="sendMessage()" title="Send"
+          class="w-10 h-10 bg-[#25D366] hover:bg-[#128C7E] text-white rounded-full flex items-center justify-center shadow-md transition active:scale-95">
+          <i class="fa-solid fa-paper-plane text-sm"></i>
+        </button>
+      </div>
+    </div>
+
+    <!-- Template messaging input (shown when 24-hour window expired) -->
+    <div id="templateMessagingInput" {% if not is_window_active %}class="flex flex-col gap-2 px-3 py-2 bg-red-50 border border-red-200 rounded-lg"{% else %}class="hidden"{% endif %}>
+      <div class="flex items-center gap-2">
+        <i class="fa-solid fa-clock text-red-500"></i>
+        <span class="text-xs text-red-600 font-medium">24-hour window expired{% if hours_since_activity < 9999 %} ({{ hours_since_activity|floatformat:1 }}h ago){% endif %}. Use template messages only.</span>
+      </div>
+      <div class="flex items-center gap-2">
+        <select id="templateSelect" onchange="fillTemplateMessage()" class="flex-1 border border-red-300 rounded-lg px-3 py-2 text-xs text-gray-700 focus:outline-none focus:border-red-500">
+          <option value="">Select a template...</option>
+          {% for template in templates %}
+          <option value="{{ template.id }}" data-text="{{ template.template_text }}">{{ template.title }}</option>
+          {% endfor %}
+        </select>
+        <button onclick="sendTemplate({{ active_session.id }}, document.getElementById('templateSelect').value)" class="px-3 py-2 bg-[#25D366] hover:bg-[#128C7E] text-white text-xs font-semibold rounded-lg transition">
+          <i class="fa-solid fa-paper-plane mr-1"></i>Send
+        </button>
+      </div>
+    </div>
+  </div>
+
+</div>
+<!-- END CHAT WINDOW -->
+
+
+<!-- ═══════════════════════════════════════════════
+     SIDE PANEL (Notes & Reminders)
+════════════════════════════════════════════════ -->
+<div class="fixed inset-0 bg-black/30 z-40 hidden" id="panelOverlay" onclick="closePanel()"></div>
+
+<div class="fixed right-0 top-0 h-full w-full sm:w-[340px] bg-white shadow-2xl z-50 flex flex-col transform translate-x-full"
+     id="sidePanel">
+
+  <div class="flex items-center justify-between px-4 py-3 bg-[#075e54] text-white flex-shrink-0">
+    <div class="flex gap-2">
+      <button id="notesTabBtn" onclick="switchTab('notes')"
+        class="px-3 py-1.5 text-xs font-semibold rounded-lg transition bg-white/20 text-white">
+        <i class="fa-solid fa-note-sticky mr-1"></i>Notes
+      </button>
+      <button id="remindersTabBtn" onclick="switchTab('reminders')"
+        class="px-3 py-1.5 text-xs font-semibold rounded-lg transition text-white/70 hover:bg-white/10">
+        <i class="fa-solid fa-bell mr-1"></i>Reminders
+      </button>
+      <button id="engagementTabBtn" onclick="switchTab('engagement')"
+        class="px-3 py-1.5 text-xs font-semibold rounded-lg transition text-white/70 hover:bg-white/10">
+        <i class="fa-solid fa-chart-line mr-1"></i>Metrics
+      </button>
+    </div>
+    <button onclick="closePanel()"
+      class="text-white/70 hover:text-white w-8 h-8 flex items-center justify-center rounded-full hover:bg-white/10">
+      <i class="fa-solid fa-xmark text-base"></i>
+    </button>
+  </div>
+
+  <!-- Notes tab -->
+  <div id="notesContent" class="flex-1 flex flex-col overflow-hidden">
+    <div class="p-3 border-b border-gray-100 flex-shrink-0 bg-yellow-50/50">
+      <textarea id="noteInput" rows="3" placeholder="Add an internal note..."
+        class="w-full border border-yellow-200 rounded-xl px-3 py-2 text-sm text-gray-800
+               outline-none resize-none focus:border-yellow-400 focus:ring-2 focus:ring-yellow-200
+               placeholder-gray-400 bg-white"></textarea>
+      <button onclick="addNote()"
+        class="mt-2 w-full py-2 bg-[#25D366] hover:bg-[#128C7E] text-white text-xs font-bold
+               rounded-xl transition flex items-center justify-center gap-1.5 shadow-sm">
+        <i class="fa-solid fa-plus text-xs"></i>Add Note
+      </button>
+    </div>
+    <div class="flex-1 overflow-y-auto p-3 flex flex-col gap-2" id="notesList">
+      {% for note in notes %}
+      <div class="bg-yellow-50 border border-yellow-200 rounded-xl p-3 shadow-sm" id="note-{{ note.id }}">
+        <p class="text-sm text-gray-700 leading-relaxed">{{ note.note }}</p>
+        <div class="flex items-center justify-between mt-2">
+          <div class="text-[10px] text-gray-400">
+            <span class="font-medium text-gray-500">{% if note.added_by %}{{ note.added_by.get_full_name|default:note.added_by.username }}{% else %}System{% endif %}</span>
+            · {{ note.created_at|date:"d M h:i A" }}
+          </div>
+          <button onclick="deleteNote({{ note.id }})" class="text-gray-300 hover:text-red-500 transition p-1">
+            <i class="fa-solid fa-trash text-xs"></i>
+          </button>
+        </div>
+      </div>
+      {% empty %}
+      <div class="flex flex-col items-center py-10 text-gray-300" id="notesEmpty">
+        <i class="fa-regular fa-note-sticky text-3xl mb-2"></i>
+        <p class="text-sm">No notes yet.</p>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+
+  <!-- Reminders tab -->
+  <div id="remindersContent" class="flex-1 flex-col overflow-hidden hidden">
+    <div class="p-3 border-b border-gray-100 flex-shrink-0 bg-blue-50/50">
+      <textarea id="reminderNote" rows="2" placeholder="Reminder note..."
+        class="w-full border border-blue-200 rounded-xl px-3 py-2 text-sm text-gray-800
+               outline-none resize-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100
+               placeholder-gray-400 bg-white"></textarea>
+      <input type="datetime-local" id="reminderAt"
+        class="w-full mt-2 border border-blue-200 rounded-xl px-3 py-2 text-sm text-gray-700
+               outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 bg-white" />
+      <button onclick="addReminder()"
+        class="mt-2 w-full py-2 bg-[#25D366] hover:bg-[#128C7E] text-white text-xs font-bold
+               rounded-xl transition flex items-center justify-center gap-1.5 shadow-sm">
+        <i class="fa-solid fa-bell-plus text-xs"></i>Set Reminder
+      </button>
+    </div>
+    <div class="flex-1 overflow-y-auto p-3 flex flex-col gap-2" id="remindersList">
+      {% for r in reminders %}
+      <div class="bg-blue-50 border border-blue-200 rounded-xl p-3 shadow-sm {% if r.done %}opacity-50{% endif %}"
+           id="rem-{{ r.id }}">
+        <p class="text-sm text-gray-700">{{ r.note }}</p>
+        <div class="flex items-center justify-between mt-2">
+          <span class="text-[10px] text-blue-500 flex items-center gap-1">
+            <i class="fa-regular fa-clock"></i>{{ r.reminder_at|date:"d M Y h:i A" }}
+          </span>
+          <div class="flex items-center gap-2">
+            <label class="flex items-center gap-1 text-[10px] text-gray-500 cursor-pointer">
+              <input type="checkbox" onchange="markReminderDone({{ r.id }}, this)"
+                {% if r.done %}checked{% endif %} class="w-3 h-3 accent-[#25D366]" />Done
+            </label>
+            <button onclick="deleteReminder({{ r.id }})" class="text-gray-300 hover:text-red-500 transition p-1">
+              <i class="fa-solid fa-trash text-xs"></i>
+            </button>
+          </div>
+        </div>
+      </div>
+      {% empty %}
+      <div class="flex flex-col items-center py-10 text-gray-300" id="remEmpty">
+        <i class="fa-regular fa-bell-slash text-3xl mb-2"></i>
+        <p class="text-sm">No reminders.</p>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+
+  <!-- Engagement Metrics tab -->
+  <div id="engagementContent" class="flex-1 flex-col overflow-hidden hidden">
+    {% if engagement %}
+    <div class="flex-1 overflow-y-auto p-3 flex flex-col gap-3">
+      <!-- Quality Score -->
+      <div class="bg-gradient-to-r from-purple-50 to-indigo-50 border border-purple-200 rounded-xl p-4 shadow-sm">
+        <div class="flex items-center justify-between mb-2">
+          <span class="text-xs font-semibold text-purple-700 uppercase tracking-wide">Quality Score</span>
+          <span class="text-2xl font-bold {% if engagement.quality_score >= 60 %}text-green-600{% elif engagement.quality_score >= 30 %}text-yellow-600{% else %}text-red-600{% endif %}">
+            {{ engagement.quality_score }}/100
+          </span>
+        </div>
+        <div class="w-full bg-purple-200 rounded-full h-2">
+          <div class="h-2 rounded-full {% if engagement.quality_score >= 60 %}bg-green-500{% elif engagement.quality_score >= 30 %}bg-yellow-500{% else %}bg-red-500{% endif %}" style="width: {{ engagement.quality_score }}%"></div>
+        </div>
+      </div>
+
+      <!-- Engagement Metrics -->
+      <div class="bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
+        <h4 class="text-xs font-semibold text-gray-700 uppercase tracking-wide mb-3">Engagement Metrics</h4>
+        <div class="grid grid-cols-2 gap-3">
+          <div class="text-center">
+            <div class="text-lg font-bold text-gray-800">{{ engagement.message_count }}</div>
+            <div class="text-[10px] text-gray-500">Total Messages</div>
+          </div>
+          <div class="text-center">
+            <div class="text-lg font-bold text-gray-800">{{ engagement.user_response_count }}</div>
+            <div class="text-[10px] text-gray-500">User Responses</div>
+          </div>
+          <div class="text-center">
+            <div class="text-lg font-bold text-gray-800">{{ engagement.bot_message_count }}</div>
+            <div class="text-[10px] text-gray-500">Bot Messages</div>
+          </div>
+          <div class="text-center">
+            <div class="text-lg font-bold text-gray-800">
+              {% if engagement.bot_message_count > 0 %}
+              {{ engagement.user_response_count|floatformat:1 }}%
+              {% else %}
+              N/A
+              {% endif %}
+            </div>
+            <div class="text-[10px] text-gray-500">Response Rate</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Response Quality -->
+      <div class="bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
+        <h4 class="text-xs font-semibold text-gray-700 uppercase tracking-wide mb-3">Response Quality</h4>
+        <div class="grid grid-cols-3 gap-2">
+          <div class="text-center p-2 bg-green-50 rounded-lg">
+            <div class="text-lg font-bold text-green-600">{{ engagement.positive_responses }}</div>
+            <div class="text-[9px] text-green-700">Positive</div>
+          </div>
+          <div class="text-center p-2 bg-gray-50 rounded-lg">
+            <div class="text-lg font-bold text-gray-600">{{ engagement.neutral_responses }}</div>
+            <div class="text-[9px] text-gray-600">Neutral</div>
+          </div>
+          <div class="text-center p-2 bg-red-50 rounded-lg">
+            <div class="text-lg font-bold text-red-600">{{ engagement.negative_responses }}</div>
+            <div class="text-[9px] text-red-700">Negative</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Delivery Tracking -->
+      <div class="bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
+        <h4 class="text-xs font-semibold text-gray-700 uppercase tracking-wide mb-3">Delivery Tracking</h4>
+        <div class="grid grid-cols-2 gap-3">
+          <div class="text-center">
+            <div class="text-lg font-bold text-green-600">{{ engagement.successful_deliveries }}</div>
+            <div class="text-[10px] text-gray-500">Successful</div>
+          </div>
+          <div class="text-center">
+            <div class="text-lg font-bold text-red-600">{{ engagement.failed_deliveries }}</div>
+            <div class="text-[10px] text-gray-500">Failed</div>
+          </div>
+        </div>
+        {% if engagement.successful_deliveries > 0 or engagement.failed_deliveries > 0 %}
+        <div class="mt-3 text-center">
+          <span class="text-xs {% if engagement.failed_deliveries < engagement.successful_deliveries %}text-green-600{% else %}text-red-600{% endif %} font-medium">
+            {% with total=engagement.successful_deliveries|add:engagement.failed_deliveries %}
+            {% if total > 0 %}
+            {{ engagement.failed_deliveries|floatformat:1 }}% failure rate
+            {% endif %}
+            {% endwith %}
+          </span>
+        </div>
+        {% endif %}
+      </div>
+
+      <!-- Risk Indicators -->
+      <div class="bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
+        <h4 class="text-xs font-semibold text-gray-700 uppercase tracking-wide mb-3">Risk Indicators</h4>
+        <div class="space-y-2">
+          <div class="flex items-center justify-between">
+            <span class="text-xs text-gray-600">Flagged as Spam</span>
+            <span class="text-xs font-semibold {% if engagement.flagged_as_spam %}text-red-600{% else %}text-green-600{% endif %}">
+              {% if engagement.flagged_as_spam %}YES{% else %}NO{% endif %}
+            </span>
+          </div>
+          <div class="flex items-center justify-between">
+            <span class="text-xs text-gray-600">Opt-out Requested</span>
+            <span class="text-xs font-semibold {% if engagement.opt_out_requested %}text-red-600{% else %}text-green-600{% endif %}">
+              {% if engagement.opt_out_requested %}YES{% else %}NO{% endif %}
+            </span>
+          </div>
+          <div class="flex items-center justify-between">
+            <span class="text-xs text-gray-600">Spam Flags</span>
+            <span class="text-xs font-semibold text-gray-800">{{ engagement.spam_flag_count }}</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Active Alert -->
+      {% if active_alert %}
+      <div class="bg-red-50 border border-red-200 rounded-xl p-4 shadow-sm">
+        <div class="flex items-start gap-2">
+          <i class="fa-solid fa-triangle-exclamation text-red-500 mt-0.5"></i>
+          <div class="flex-1">
+            <h4 class="text-xs font-semibold text-red-700 uppercase tracking-wide mb-1">Active Alert</h4>
+            <p class="text-xs text-red-600">{{ active_alert.description }}</p>
+            <div class="mt-2 flex items-center gap-2">
+              <span class="text-[10px] font-bold text-red-800 bg-red-200 px-2 py-0.5 rounded">{{ active_alert.risk_level|upper }}</span>
+              <span class="text-[10px] text-red-600">{{ active_alert.risk_type|title }}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      {% endif %}
+
+      <!-- Opt-in Status -->
+      <div class="bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
+        <div class="flex items-center justify-between">
+          <span class="text-xs font-semibold text-gray-700 uppercase tracking-wide">Opt-in Status</span>
+          <span class="text-xs font-semibold {% if has_opt_in %}text-green-600{% else %}text-orange-600{% endif %}">
+            {% if has_opt_in %}VERIFIED{% else %}NOT FOUND{% endif %}
+          </span>
+        </div>
+      </div>
+    </div>
+    {% else %}
+    <div class="flex flex-col items-center py-10 text-gray-300">
+      <i class="fa-solid fa-chart-line text-3xl mb-2"></i>
+      <p class="text-sm">No engagement data yet.</p>
+    </div>
+    {% endif %}
+  </div>
+
+</div>
+<!-- END SIDE PANEL -->
+
+{% else %}
+<!-- ═══════════════════════════════════════════════
+     NO CHAT SELECTED — EMPTY STATE
+════════════════════════════════════════════════ -->
+<div id="emptyChatState">
+  <div class="w-20 h-20 rounded-full bg-gray-200 flex items-center justify-center mb-4">
+    <i class="fa-brands fa-whatsapp text-4xl text-gray-400"></i>
+  </div>
+  <p class="text-base font-semibold text-gray-500">Select a conversation</p>
+  <p class="text-sm text-gray-400 mt-1">Choose a chat from the list to start messaging</p>
+  <button onclick="openConvDrawer()"
+    class="md:hidden mt-4 px-4 py-2 bg-[#25D366] text-white text-sm font-semibold rounded-xl">
+    <i class="fa-solid fa-comments mr-1"></i> Open Conversations
+  </button>
+</div>
+{% endif %}
+
+</div><!-- END crm-shell -->
+
+<!-- ═══════════════════════════════════════════════
+     ADD NEW CHAT ("+")
+════════════════════════════════════════════════ -->
+<button id="newChatFab" type="button" onclick="openNewChat()" aria-label="Add new chat"
+        class="{% if active_session %}in-sidebar{% endif %}">
+  <i class="fa-solid fa-plus"></i>
+</button>
+
+{% if active_session %}
+<!-- ═══════════════════════════════════════════════
+     ATTACH SHEET (paperclip): files + Follow Up templates
+════════════════════════════════════════════════ -->
+<div id="attachSheet" class="att-backdrop" onclick="if (event.target === this) closeAttachSheet()">
+  <div class="att-sheet">
+    <div class="att-grid">
+      <button type="button" onclick="pickAttach('docInput')"><span style="background:#3f51b5"><i class="fa-solid fa-file"></i></span>Document</button>
+      <button type="button" onclick="pickAttach('videoInput')"><span style="background:#e91e63"><i class="fa-solid fa-film"></i></span>Video</button>
+      <button type="button" onclick="pickAttach('galleryInput')"><span style="background:#9c27b0"><i class="fa-solid fa-image"></i></span>Gallery</button>
+      <button type="button" onclick="pickAttach('cameraInput')"><span style="background:#4caf50"><i class="fa-solid fa-camera"></i></span>Camera</button>
+      <button type="button" onclick="pickAttach('audioInput')"><span style="background:#ff9800"><i class="fa-solid fa-headphones"></i></span>Audio</button>
+      <button type="button" onclick="openTplSheet()"><span style="background:#00a86b"><i class="fa-solid fa-bullhorn"></i></span>Follow Up</button>
+    </div>
+    <div class="att-handle"></div>
+  </div>
+</div>
+
+<!-- WHY NOT DELIVERED (red icon on a failed message) -->
+<div id="failSheet" class="fs-backdrop" onclick="if (event.target === this) closeFailSheet()">
+  <div class="fs-card">
+    <div class="flex items-center gap-2 text-red-600 font-extrabold text-[20px] mb-3">
+      <i class="fa-solid fa-circle-exclamation"></i> Message not delivered
+      <span id="failCode" class="text-xs font-normal text-red-400"></span>
+    </div>
+    <p id="failGuess" class="hidden text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-2 py-1 mb-2">
+      WhatsApp's exact error was not recorded for this older message; this is the most likely reason.
+    </p>
+    <div class="text-[14px] text-gray-800"><span class="font-semibold">Reason:</span> <span id="failReason"></span></div>
+    <div class="text-[14px] text-gray-800 mt-2"><span class="font-semibold text-[#00a86b]">How to fix:</span> <span id="failFix"></span></div>
+    <div class="fs-actions">
+      <button type="button" onclick="closeFailSheet(); openTplSheet();">Send template</button>
+      <button type="button" onclick="closeFailSheet()">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- FOLLOW UP: approved WhatsApp templates (allowed inside and outside 24 h) -->
+<div id="tplSheet" class="fs-backdrop" onclick="if (event.target === this) closeTplSheet()">
+  <div class="fs-card">
+    <div class="fs-title">Follow Up</div>
+    <p class="text-xs text-gray-500 -mt-3 mb-3">Send an approved WhatsApp template. Templates can be sent at any time, even after 24 hours.</p>
+    {% for template in templates %}
+    <button type="button" class="tpl-row" {% if template.template_name %}onclick="sendFollowUp({{ template.id }}, this)"{% else %}disabled title="Add the approved Meta template name in Admin first"{% endif %}>
+      <span class="font-semibold text-[15px] text-gray-900">{{ template.title }}</span>
+      <span class="text-xs text-gray-500 line-clamp-2">{{ template.template_text|truncatechars:140 }}</span>
+      {% if not template.template_name %}<span class="text-[11px] text-red-500">No Meta template name - cannot send</span>{% endif %}
+    </button>
+    {% empty %}
+    <p class="text-sm text-gray-500 py-4">No templates yet. Add them in Admin &rarr; CRM Templates.</p>
+    {% endfor %}
+    <div class="fs-actions"><button type="button" onclick="closeTplSheet()">Cancel</button></div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════
+     CREATE NOTE (+ optional reminder)
+════════════════════════════════════════════════ -->
+<div id="noteSheet" class="fs-backdrop" onclick="if (event.target === this) closeNoteSheet()">
+  <div class="fs-card" style="min-height:62dvh; display:flex; flex-direction:column">
+    <div class="text-[26px] font-extrabold text-gray-900 mb-5">Create Note</div>
+    <textarea id="nsNote" rows="2" placeholder="Enter your note here"
+      class="w-full border-0 border-b-2 border-gray-800 outline-none text-[16px] py-2 resize-none focus:border-[#00a86b]"></textarea>
+    <button type="button" onclick="toggleNsReminder()" class="flex items-center gap-4 mt-6 text-[17px] text-gray-800 self-start">
+      <i class="fa-solid fa-calendar-days text-[#00a86b] text-2xl"></i>
+      <span id="nsReminderLabel">Set Reminder</span>
+    </button>
+    <input type="date" id="nsWhen" class="hidden fs-field mt-3">
+    <div class="flex-1"></div>
+    <div class="fs-actions">
+      <button type="button" id="nsSave" onclick="saveNote()">Save</button>
+      <button type="button" onclick="closeNoteSheet()">Cancel</button>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+<!-- ═══════════════════════════════════════════════
+     SELECT FILTERS (app bar filter button)
+════════════════════════════════════════════════ -->
+<div id="filterSheet" class="fs-backdrop" onclick="if (event.target === this) closeFilterSheet()">
+  <div class="fs-card">
+    <div class="fs-title">Select Filters</div>
+
+    <span class="fs-label" style="margin-top:0">Click here to select dates</span>
+    <div class="flex gap-2">
+      <label class="fs-date"><i class="fa-regular fa-calendar"></i><input type="text" id="fsStart" placeholder="Start Date" aria-label="Start Date" onfocus="fsDateFocus(this)" onblur="fsDateBlur(this)"></label>
+      <label class="fs-date"><i class="fa-regular fa-calendar"></i><input type="text" id="fsEnd" placeholder="End Date" aria-label="End Date" onfocus="fsDateFocus(this)" onblur="fsDateBlur(this)"></label>
+    </div>
+
+    <span class="fs-label">Choose Label</span>
+    <div class="fs-labels-box">
+      <div id="fsChips" class="flex flex-wrap gap-1.5"></div>
+      <button type="button" class="fs-add" onclick="openLabelPicker()"><i class="fa-solid fa-plus mr-2"></i>Add</button>
+    </div>
+
+    <span class="fs-label">Choose Agent</span>
+    <select id="fsAgent" class="fs-field">
+      <option value="">Assign To</option>
+      {% for u in sales_users %}
+      <option value="{{ u.id }}">{{ u.get_full_name|default:u.username }}</option>
+      {% endfor %}
+      {% if user_role != "sales" %}<option value="none">Not Assigned</option>{% endif %}
+    </select>
+
+    <span class="fs-label">Select Chat Type</span>
+    <select id="fsType" class="fs-field">
+      <option value="open">Open</option>
+      <option value="all">All</option>
+      <option value="closed">Close</option>
+    </select>
+
+    <div class="fs-actions">
+      <button type="button" onclick="clearListFilters()">Clear</button>
+      <button type="button" onclick="applyListFilters()">Apply</button>
+    </div>
+  </div>
+</div>
+
+<div id="labelPicker" class="fs-backdrop" style="z-index:76" onclick="if (event.target === this) closeLabelPicker()">
+  <div class="fs-card" style="max-width:340px">
+    <div class="fs-title">Select Labels</div>
+    <div id="fsPickList">
+      {% for label in labels %}
+      <label class="fs-pick-row">
+        <span>{{ label.name|upper }}</span>
+        <input type="checkbox" value="{{ label.id }}" data-name="{{ label.name }}" data-color="{{ label.color|default:'#6b7280' }}">
+      </label>
+      {% endfor %}
+    </div>
+    <div class="fs-actions">
+      <button type="button" onclick="closeLabelPicker()">Cancel</button>
+      <button type="button" onclick="doneLabelPicker()">Done</button>
+    </div>
+  </div>
+</div>
+
+<div id="newChatSheet" onclick="if (event.target === this) closeNewChat()">
+  <div class="sheet">
+    <div class="flex items-center gap-4 px-4 py-4 bg-[#00a86b] text-white">
+      <button type="button" onclick="closeNewChat()" aria-label="Back"><i class="fa-solid fa-arrow-left text-xl"></i></button>
+      <span class="text-xl font-bold">Add New Chat</span>
+    </div>
+
+    <div class="nc-box space-y-3">
+      <div class="relative">
+        <i class="fa-regular fa-user absolute left-4 top-1/2 -translate-y-1/2 text-gray-600"></i>
+        <input id="ncName" type="text" class="nc-input" style="padding-left:44px" placeholder="Name" autocomplete="name">
+      </div>
+      <div class="flex gap-2">
+        <select id="ncCountry" class="nc-input" style="width:120px">
+          <option value="91" selected>🇮🇳 +91</option>
+          <option value="971">🇦🇪 +971</option>
+          <option value="977">🇳🇵 +977</option>
+          <option value="1">🇺🇸 +1</option>
+          <option value="44">🇬🇧 +44</option>
+          <option value="61">🇦🇺 +61</option>
+          <option value="65">🇸🇬 +65</option>
+        </select>
+        <input id="ncPhone" type="tel" inputmode="numeric" class="nc-input flex-1" placeholder="Mobile Number">
+      </div>
+    </div>
+
+    <div class="nc-box space-y-3">
+      <label class="block text-[15px] text-gray-800">WhatsApp Mobile Number</label>
+      <select class="nc-input font-semibold" disabled>
+        <option>{{ whatsapp_number|default:"WhatsApp Business" }}</option>
+      </select>
+      <label class="block text-[15px] text-gray-800 pt-1">Choose Template Message</label>
+      <label class="flex items-center justify-between text-[15px] text-gray-800">
+        Filter Follow Up Templates
+        <input id="ncFollowUp" type="checkbox" class="w-5 h-5 accent-[#00a86b]" onchange="renderNcTemplates()">
+      </label>
+      <select id="ncTemplate" class="nc-input font-semibold text-gray-700">
+        <option value="">Select an Item</option>
+      </select>
+      <p id="ncTemplatePreview" class="hidden text-xs text-gray-500 bg-gray-50 border border-gray-200 rounded-lg p-2 whitespace-pre-line"></p>
+      <p class="text-[11px] text-gray-400">No template selected? The contact is just saved as a lead and the chat opens.</p>
+    </div>
+
+    <!-- Bulk: up to 50 contacts from an Excel / CSV file (saved as chats + leads, no message sent) -->
+    <div class="nc-box space-y-2">
+      <div class="flex items-center justify-between">
+        <label class="text-[15px] font-semibold text-gray-800"><i class="fa-solid fa-file-excel text-[#1d6f42] mr-1"></i> Bulk upload from Excel</label>
+        <a href="{% url 'crm_bulk_add_sample' %}" class="text-xs font-semibold text-[#00a86b] hover:underline">Download sample</a>
+      </div>
+      <p class="text-[11px] text-gray-500">Columns: <b>Name</b> and <b>Mobile</b>. Up to 50 contacts per file (.xlsx or .csv). 10-digit numbers get +91; add the country code for others. Contacts are saved as leads assigned to you; no message is sent.</p>
+      <input id="ncBulkFile" type="file" accept=".xlsx,.xlsm,.csv" class="block w-full text-sm text-gray-700 file:mr-3 file:rounded-lg file:border-0 file:bg-[#e6f6ef] file:px-3 file:py-2 file:font-semibold file:text-[#00a86b]">
+      <button id="ncBulkBtn" type="button" onclick="uploadBulkChats()" class="w-full rounded-xl bg-[#00a86b] hover:bg-[#009660] text-white font-semibold py-2.5 disabled:opacity-60">
+        <i class="fa-solid fa-upload mr-1"></i> Upload contacts
+      </button>
+      <div id="ncBulkResult" class="hidden text-xs rounded-lg px-3 py-2 whitespace-pre-line"></div>
+    </div>
+
+    <div id="ncError" class="hidden mx-3 mt-3 text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2"></div>
+    <div class="flex-1"></div>
+    <div class="flex justify-end p-4">
+      <button id="ncSend" type="button" onclick="submitNewChat()" aria-label="Send"
+              class="w-14 h-14 rounded-2xl bg-[#00a86b] hover:bg-[#009660] text-white text-xl shadow-lg flex items-center justify-center disabled:opacity-60">
+        <i class="fa-solid fa-paper-plane"></i>
+      </button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+
+{% block extra_scripts %}
+<script>
+// ─── Django-injected config ───────────────────────────────────────────────────
+const CSRF_TOKEN = "{{ csrf_token }}";
+
+{% if active_session %}
+const SESSION_ID       = {{ active_session.id }};
+const SEND_URL         = "{% url 'crm_send_message'    active_session.id %}";
+const SEND_FILE_URL    = "{% url 'crm_send_file'       active_session.id %}";
+const TAKEOVER_URL     = "{% url 'crm_human_takeover'  active_session.id %}";
+const CLOSE_URL        = "{% url 'crm_close_ticket'    active_session.id %}";
+const LIVE_MSG_URL     = "{% url 'crm_live_messages'   active_session.id %}";
+let isHumanTakeover    = {% if active_session.is_human_takeover %}true{% else %}false{% endif %};
+let isTicketClosed     = {% if conv_status.closed %}true{% else %}false{% endif %};
+{% endif %}
+
+const LABEL_URL    = "{% url 'crm_update_label' %}";
+const ASSIGN_URL   = "{% url 'crm_assign_chat' %}";
+const NOTE_URL     = "{% url 'crm_add_note' %}";
+const REMINDER_URL = "{% url 'crm_add_reminder' %}";
+
+// ─── State ────────────────────────────────────────────────────────────────────
+let lastMsgId    = 0;
+let pendingFiles = [];
+
+{% if active_session %}
+// Seed lastMsgId from rendered messages
+try {
+  const els = document.querySelectorAll('#chatMessages [data-msg-id]');
+  if (els.length) lastMsgId = parseInt(els[els.length - 1].dataset.msgId) || 0;
+} catch(e) {}
+
+// Scroll to bottom on load
+const chatMessages = document.getElementById('chatMessages');
+chatMessages.scrollTop = chatMessages.scrollHeight;
+{% endif %}
+
+// Close more-menu on outside click
+document.addEventListener('click', function(e) {
+  const wrap = document.getElementById('moreMenuWrap');
+  if (wrap && !wrap.contains(e.target))
+    document.getElementById('moreMenu')?.classList.add('hidden');
+});
+
+
+// ═══════════════════════════════════════════════════════════════
+//  COPY MESSAGE
+//  Works for text, documents, and audio (copies filename/label).
+//  For image/video bubbles with no text, copies a placeholder.
+// ═══════════════════════════════════════════════════════════════
+
+/**
+ * copyMessage(btn, rawText)
+ *
+ * rawText  — the Django-escaped message string passed inline from the template.
+ *            Falls back to reading the nearest .msg-text-content element if empty,
+ *            which handles dynamically injected messages from live-poll.
+ *
+ * Visual feedback:
+ *   • The copy icon swaps to a checkmark tick for 1.4 s.
+ *   • A small "Copied!" toast floats above the button then fades.
+ */
+function copyMessage(btn, rawText) {
+  // Resolve what to copy
+  let text = (rawText || '').trim();
+
+  if (!text) {
+    // Fallback: read from sibling .msg-text-content paragraph
+    const bubble = btn.closest('.msg-row-in, .msg-row-out');
+    if (bubble) {
+      const textEl = bubble.querySelector('.msg-text-content');
+      if (textEl) text = textEl.innerText.trim();
+    }
+  }
+
+  if (!text) {
+    text = '[media message]';
+  }
+
+  // Write to clipboard
+  const writePromise = navigator.clipboard
+    ? navigator.clipboard.writeText(text)
+    : Promise.reject('no clipboard API');
+
+  writePromise
+    .catch(() => {
+      // Fallback for HTTP or older browsers
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      ta.style.cssText = 'position:fixed;opacity:0;top:0;left:0';
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand('copy');
+      document.body.removeChild(ta);
+    })
+    .finally(() => {
+      _showCopyFeedback(btn);
+    });
+}
+
+function _showCopyFeedback(btn) {
+  // Swap icon to tick
+  const icon = btn.querySelector('i');
+  const original = icon ? icon.className : '';
+  if (icon) icon.className = 'fa-solid fa-check text-[11px] text-green-300';
+
+  // Floating "Copied!" label
+  const flash = document.createElement('span');
+  flash.className = 'copy-flash';
+  flash.textContent = 'Copied!';
+
+  // Position relative to parent .max-w div (nearest positioned ancestor of the button)
+  const anchor = btn.parentElement;
+  anchor.style.position = 'relative';
+  anchor.appendChild(flash);
+
+  // Restore icon after animation completes
+  setTimeout(() => {
+    if (icon) icon.className = original;
+    flash.remove();
+  }, 1450);
+}
+
+
+// ═══════════════════════════════════════════════════════════════
+//  NOTIFICATION SOUNDS
+// ═══════════════════════════════════════════════════════════════
+
+let _audioCtx      = null;
+let _audioUnlocked = false;
+
+function getAudioCtx() {
+  if (!_audioCtx) {
+    _audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  }
+  return _audioCtx;
+}
+
+function unlockAudio() {
+  if (_audioUnlocked) return;
+  try {
+    const ctx = getAudioCtx();
+    const buf = ctx.createBuffer(1, 1, 22050);
+    const src = ctx.createBufferSource();
+    src.buffer = buf;
+    src.connect(ctx.destination);
+    src.start(0);
+    if (ctx.state === 'suspended') ctx.resume();
+    _audioUnlocked = true;
+  } catch(e) {}
+}
+
+function _playTones(freqs, duration, gap, type, gainPeak) {
+  try {
+    const ctx = getAudioCtx();
+    if (ctx.state === 'suspended') ctx.resume();
+    let startTime = ctx.currentTime + 0.05;
+    freqs.forEach((freq) => {
+      const osc  = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.type            = type;
+      osc.frequency.value = freq;
+      gain.gain.setValueAtTime(0,         startTime);
+      gain.gain.linearRampToValueAtTime(gainPeak, startTime + 0.01);
+      gain.gain.setValueAtTime(gainPeak,  startTime + duration * 0.6);
+      gain.gain.linearRampToValueAtTime(0,         startTime + duration);
+      osc.start(startTime);
+      osc.stop(startTime + duration);
+      startTime += duration + gap;
+    });
+  } catch(e) {}
+}
+
+function playHotSound()      { _playTones([880, 1046], 0.18, 0.06, 'sine',     0.55); }
+function playMessageSound()  { _playTones([660],       0.22, 0,    'sine',     0.40); }
+function playReminderSound() { _playTones([523, 659, 784], 0.20, 0.08, 'triangle', 0.45); }
+
+
+// ═══════════════════════════════════════════════════════════════
+//  UTILITIES
+// ═══════════════════════════════════════════════════════════════
+function escHtml(s) {
+  return String(s || '')
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+
+function scrollToBottom() {
+  const el = document.getElementById('chatMessages');
+  if (el) el.scrollTop = el.scrollHeight;
+}
+
+function isNearBottom() {
+  const el = document.getElementById('chatMessages');
+  if (!el) return true;
+  return el.scrollHeight - el.scrollTop - el.clientHeight < 150;
+}
+
+function openLightbox(src) {
+  document.getElementById('lightboxImg').src = src;
+  document.getElementById('imgLightbox').classList.add('open');
+}
+function closeLightbox(e) {
+  if (e) e.stopPropagation();
+  document.getElementById('imgLightbox').classList.remove('open');
+  document.getElementById('lightboxImg').src = '';
+}
+
+function openConvDrawer() {
+  document.getElementById('conv-drawer').classList.add('open');
+  document.getElementById('drawerOverlay').classList.remove('hidden');
+  document.body.style.overflow = 'hidden';
+}
+function closeConvDrawer() {
+  document.getElementById('conv-drawer').classList.remove('open');
+  document.getElementById('drawerOverlay').classList.add('hidden');
+  document.body.style.overflow = '';
+}
+
+function toggleMoreMenu() {
+  document.getElementById('moreMenu').classList.toggle('hidden');
+}
+
+const BASE_CHAT_URL = "{% if active_session %}{% url 'crm_chat_detail' active_session.id %}{% else %}{% url 'crm_chat_home' %}{% endif %}";
+
+function applyFilter(val) {
+  const url = new URL(BASE_CHAT_URL, window.location.origin);
+  url.searchParams.set('filter', val);
+  window.location.href = url.toString();
+}
+function applyDateFilter(val) {
+  const url = new URL(window.location.href);
+  if (val) url.searchParams.set('date', val);
+  else url.searchParams.delete('date');
+  window.location.href = url.toString();
+}
+function toggleSearch() {
+  const w = document.getElementById('searchWrap');
+  w.classList.toggle('hidden');
+  if (!w.classList.contains('hidden')) document.getElementById('searchInput')?.focus();
+}
+
+
+{% if active_session %}
+// ═══════════════════════════════════════════════════════════════
+//  WEBSOCKET
+// ═══════════════════════════════════════════════════════════════
+let ws               = null;
+let wsReconnectDelay = 1000;
+
+function initWebSocket() {
+  const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+  const wsUrl = `${proto}://${location.host}/crm/notifications/`;
+  console.log('[WebSocket] Attempting to connect to:', wsUrl);
+  ws = new WebSocket(wsUrl);
+
+  ws.onopen  = () => { 
+    console.log('[WebSocket] Connected successfully');
+    wsReconnectDelay = 1000; 
+    setWsDot('green', 'Realtime: connected'); 
+  };
+  ws.onclose = (event) => {
+    console.log('[WebSocket] Connection closed:', event.code, event.reason);
+    setWsDot('gray', 'Realtime: reconnecting…');
+    setTimeout(initWebSocket, wsReconnectDelay);
+    wsReconnectDelay = Math.min(wsReconnectDelay * 2, 30000);
+  };
+  ws.onerror = (error) => {
+    console.log('[WebSocket] Error:', error);
+    setWsDot('red', 'Realtime: error');
+  };
+  ws.onmessage = (evt) => {
+    let data;
+    try { data = JSON.parse(evt.data); } catch(e) { return; }
+    console.log('[WebSocket] Message received:', data.type);
+    switch (data.type) {
+      case 'lead_label_change': handleWsLabelChange(data);  break;
+      case 'new_message':       handleWsNewMessage(data);   break;
+      case 'reminder_due':      handleWsReminderDue(data);  break;
+      case 'message_status':    handleWsMessageStatus(data); break;
+      case 'chat_closed':      handleWsChatClosed(data);    break;
+      case 'chat_assigned':    handleWsChatAssigned(data);  break;
+    }
+  };
+}
+
+function setWsDot(color, title) {
+  const dot = document.getElementById('wsDot');
+  if (!dot) return;
+  const map = { green: '#25D366', gray: '#9ca3af', red: '#ef4444' };
+  dot.style.background = map[color] || map.gray;
+  document.getElementById('wsStatus').title = title;
+}
+
+function handleWsLabelChange(data) {
+  playHotSound();
+  const badge = document.querySelector(`#sidebar-session-${data.session_id} [id^="sidebar-label-"]`);
+  if (badge) {
+    const key = (data.label || '').toUpperCase().replace(/\s/g, '');
+    badge.className = `conv-label-pill lbl-${key}`;
+    if (data.label_color) badge.style.background = data.label_color;
+    badge.textContent = data.label;
+  }
+  showWsToast('hot',
+    `<i class="fa-solid fa-fire text-red-400 mr-2"></i>` +
+    `<div><div class="font-semibold text-sm">${escHtml(data.session_name)}</div>` +
+    `<div class="text-xs text-gray-300">Labelled <strong>${escHtml(data.label)}</strong></div></div>`
+  );
+}
+
+function handleWsNewMessage(data) {
+  if (data.session_id === SESSION_ID) return;
+  playMessageSound();
+  showWsToast('msg',
+    `<i class="fa-brands fa-whatsapp text-green-400 mr-2"></i>` +
+    `<div><div class="font-semibold text-sm">${escHtml(data.session_name)}</div>` +
+    `<div class="text-xs text-gray-300">${escHtml((data.preview || '').slice(0, 60))}</div></div>`
+  );
+  const previewEl = document.getElementById(`sidebar-preview-${data.session_id}`);
+  if (previewEl) previewEl.textContent = (data.preview || '').slice(0, 36);
+}
+
+function handleWsReminderDue(data) {
+  playReminderSound();
+  showWsToast('rem',
+    `<i class="fa-solid fa-bell text-blue-400 mr-2"></i>` +
+    `<div><div class="font-semibold text-sm">Reminder — ${escHtml(data.session_name)}</div>` +
+    `<div class="text-xs text-gray-300">${escHtml((data.note || '').slice(0, 60))}</div>` +
+    `<div class="text-[10px] text-gray-400">${escHtml(data.reminder_at || '')}</div></div>`
+  );
+}
+
+function handleWsMessageStatus(data) {
+  const msgRow = document.querySelector(`[data-msg-id="${data.message_id}"]`);
+  if (!msgRow) return;
+  
+  const statusEl = msgRow.querySelector('.msg-status');
+  if (!statusEl) return;
+  
+  statusEl.dataset.status = data.status;
+  
+  let iconHtml = '';
+  if (data.status === 'sent') {
+    iconHtml = '<i class="fa-solid fa-check text-gray-400"></i>';
+  } else if (data.status === 'delivered') {
+    iconHtml = '<i class="fa-solid fa-check-double text-[#4db0f5]"></i>';
+  } else if (data.status === 'read') {
+    iconHtml = '<i class="fa-solid fa-check-double text-blue-500"></i>';
+  } else if (data.status === 'failed') {
+    iconHtml = FAIL_ICON;
+  } else {
+    iconHtml = '<i class="fa-solid fa-check text-gray-400"></i>';
+  }
+  
+  statusEl.innerHTML = iconHtml;
+  if (data.status === 'failed') setTimeout(refreshDeliveryNotes, 1500);
+}
+
+function handleWsChatClosed(data) {
+  playReminderSound();
+  
+  let templateButtonsHtml = '';
+  if (data.templates && data.templates.length > 0) {
+    templateButtonsHtml = '<div class="mt-3 pt-3 border-t border-white/20">';
+    templateButtonsHtml += '<div class="text-xs text-gray-300 mb-2">Send template to re-engage:</div>';
+    templateButtonsHtml += '<div class="flex flex-wrap gap-2">';
+    
+    data.templates.forEach(template => {
+      templateButtonsHtml += `
+        <button onclick="sendTemplate(${data.session_id}, ${template.id})"
+                class="bg-white/20 hover:bg-white/30 text-white text-xs px-3 py-1.5 rounded-lg transition-colors">
+          ${escHtml(template.title)}
+        </button>
+      `;
+    });
+    
+    templateButtonsHtml += '</div></div>';
+  }
+  
+  showWsToast('closed',
+    `<i class="fa-solid fa-clock text-orange-400 mr-2"></i>` +
+    `<div><div class="font-semibold text-sm">Chat Closed — ${escHtml(data.session_name)}</div>` +
+    `<div class="text-xs text-gray-300">Inactive for 24 hours</div>` +
+    templateButtonsHtml +
+    `</div>`
+  );
+}
+
+function handleWsChatAssigned(data) {
+  playMessageSound();
+  
+  showWsToast('assigned',
+    `<i class="fa-solid fa-user-plus text-green-400 mr-2"></i>` +
+    `<div><div class="font-semibold text-sm">Chat Assigned — ${escHtml(data.session_name)}</div>` +
+    `<div class="text-xs text-gray-300">You have been assigned this lead</div></div>`
+  );
+}
+
+function sendTemplate(sessionId, templateId) {
+  fetch(`/crm/chat/${sessionId}/send-template/`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-CSRFToken': CSRF_TOKEN,
+    },
+    body: JSON.stringify({ template_id: templateId }),
+  })
+  .then(response => response.json())
+  .then(data => {
+    if (data.success) {
+      // Refresh the chat to show the new message
+      location.reload();
+    } else {
+      alert('Failed to send template: ' + (data.error || 'Unknown error'));
+      refreshDeliveryNotes();
+    }
+  })
+  .catch(error => {
+    console.error('Error sending template:', error);
+    alert('Failed to send template');
+  });
+}
+
+function showWsToast(kind, html) {
+  const container = document.getElementById('wsToastContainer');
+  const toast = document.createElement('div');
+  toast.className = `ws-toast ${kind}`;
+  toast.innerHTML = `<div class="flex items-start gap-2">${html}</div>`;
+  toast.addEventListener('click', () => toast.remove());
+  container.appendChild(toast);
+  setTimeout(() => toast.remove(), 6000);
+}
+
+initWebSocket();
+
+// Polling-based notification fallback for all chat updates
+let lastAssignmentCheck = Date.now();
+let knownAssignmentIds = new Set();
+let knownMessageIds = new Set();
+let knownLabelChangeIds = new Set();
+
+function checkForNewAssignments() {
+  fetch('/crm/check-assignments/')
+    .then(r => r.json())
+    .then(data => {
+      if (data.success) {
+        // Handle new assignments
+        if (data.assignments) {
+          data.assignments.forEach(assignment => {
+            if (!knownAssignmentIds.has(assignment.id)) {
+              knownAssignmentIds.add(assignment.id);
+              showAssignmentNotification(assignment);
+            }
+          });
+        }
+        
+        // Handle new messages on assigned chats
+        if (data.new_messages) {
+          data.new_messages.forEach(msg => {
+            if (!knownMessageIds.has(msg.id)) {
+              knownMessageIds.add(msg.id);
+              showNewMessageNotification(msg);
+            }
+          });
+        }
+        
+        // Handle label changes on assigned chats
+        if (data.label_changes) {
+          data.label_changes.forEach(change => {
+            const key = `${change.session_id}_${change.label}`;
+            if (!knownLabelChangeIds.has(key)) {
+              knownLabelChangeIds.add(key);
+              showLabelChangeNotification(change);
+            }
+          });
+        }
+      }
+    })
+    .catch(err => console.error('Assignment check error:', err));
+}
+
+function showAssignmentNotification(assignment) {
+  playMessageSound();
+  showWsToast('assigned',
+    `<i class="fa-solid fa-user-plus text-green-400 mr-2"></i>` +
+    `<div><div class="font-semibold text-sm">Chat Assigned — ${escHtml(assignment.session_name)}</div>` +
+    `<div class="text-xs text-gray-300">You have been assigned this lead</div></div>`
+  );
+}
+
+function showNewMessageNotification(msg) {
+  playMessageSound();
+  showWsToast('msg',
+    `<i class="fa-brands fa-whatsapp text-green-400 mr-2"></i>` +
+    `<div><div class="font-semibold text-sm">New Message — ${escHtml(msg.session_name)}</div>` +
+    `<div class="text-xs text-gray-300">${escHtml(msg.message)}</div></div>`
+  );
+}
+
+function showLabelChangeNotification(change) {
+  playMessageSound();
+  showWsToast('label',
+    `<i class="fa-solid fa-tag text-yellow-400 mr-2"></i>` +
+    `<div><div class="font-semibold text-sm">Label Changed — ${escHtml(change.session_name)}</div>` +
+    `<div class="text-xs text-gray-300">Label: ${escHtml(change.label)}</div></div>`
+  );
+}
+
+// Check for new updates every 30 seconds
+setInterval(checkForNewAssignments, 30000);
+
+['click', 'keydown', 'touchstart'].forEach(evt =>
+  document.addEventListener(evt, unlockAudio, { once: true, capture: true })
+);
+
+
+// ═══════════════════════════════════════════════════════════════
+//  EMOJI PICKER
+// ═══════════════════════════════════════════════════════════════
+function toggleEmojiInput() {
+  const input  = document.getElementById('msgInput');
+  const picker = document.getElementById('emojiPicker');
+  if ('ontouchstart' in window) { input.focus(); return; }
+  if (!picker.classList.contains('hidden') && picker.children.length > 0) {
+    picker.classList.add('hidden'); return;
+  }
+  if (!picker.dataset.built) {
+    picker.dataset.built = '1';
+    const emojis = [
+      '😊','😂','❤️','👍','🙏','😍','🎉','😎','👋','🔥',
+      '💪','✅','⭐','🏠','💰','📞','📅','🚗','✈️','🍽️',
+      '😅','🤔','👌','💯','🙌','😭','😤','🥳','🤩','😇',
+      '💬','📷','🎁','🏆','💡','📌','⚡','🌟','💥','🎯'
+    ];
+    picker.innerHTML = `
+      <div class="bg-white rounded-2xl shadow-2xl border border-gray-200 p-3 w-64">
+        <div class="grid grid-cols-8 gap-1">
+          ${emojis.map(e =>
+            `<button onclick="insertEmoji('${e}')"
+              class="text-xl hover:bg-gray-100 rounded-lg p-1 leading-none transition">${e}</button>`
+          ).join('')}
+        </div>
+      </div>`;
+  }
+  picker.classList.remove('hidden');
+}
+
+function insertEmoji(emoji) {
+  const input = document.getElementById('msgInput');
+  const start = input.selectionStart;
+  const end   = input.selectionEnd;
+  input.value = input.value.slice(0, start) + emoji + input.value.slice(end);
+  input.selectionStart = input.selectionEnd = start + emoji.length;
+  input.focus();
+  autoResize(input);
+  document.getElementById('emojiPicker').classList.add('hidden');
+}
+
+
+// ═══════════════════════════════════════════════════════════════
+//  FILE HANDLING
+// ═══════════════════════════════════════════════════════════════
+function handleFileSelect(files) {
+  if (!files || files.length === 0) return;
+  Array.from(files).forEach(file => {
+    if (file.size > 16 * 1024 * 1024) {
+      alert(`"${file.name}" is larger than 16 MB and cannot be sent via WhatsApp.`);
+      return;
+    }
+    pendingFiles.push({ file, previewUrl: URL.createObjectURL(file), type: file.type });
+  });
+  renderFilePreview();
+  document.getElementById('fileInput').value  = '';
+  document.getElementById('cameraInput').value = '';
+}
+
+function fileKindIcon(mime, name) {
+  if (mime.startsWith('image/')) return 'fa-file-image';
+  if (mime.startsWith('video/')) return 'fa-file-video';
+  if (mime.startsWith('audio/')) return 'fa-file-audio';
+  if (mime === 'application/pdf' || /\.pdf$/i.test(name)) return 'fa-file-pdf';
+  if (/\.(docx?|xlsx?|pptx?)$/i.test(name)) return 'fa-file-word';
+  return 'fa-file';
+}
+
+function renderFilePreview() {
+  const strip = document.getElementById('filePreviewStrip');
+  if (pendingFiles.length === 0) {
+    strip.classList.add('hidden');
+    strip.innerHTML = '';
+    return;
+  }
+  strip.classList.remove('hidden');
+  strip.innerHTML = pendingFiles.map((f, i) => {
+    const isImage = f.type.startsWith('image/');
+    const icon    = fileKindIcon(f.type, f.file.name);
+    return `
+      <div class="relative flex-shrink-0 group">
+        ${isImage
+          ? `<img src="${f.previewUrl}" class="w-16 h-16 object-cover rounded-xl border-2 border-white shadow-md">`
+          : `<div class="w-16 h-16 bg-gray-100 rounded-xl border-2 border-white shadow-md flex flex-col items-center justify-center gap-1">
+               <i class="fa-solid ${icon} text-gray-500 text-xl"></i>
+               <span class="text-[9px] text-gray-500 truncate px-1 w-full text-center">${escHtml(f.file.name.slice(-10))}</span>
+             </div>`}
+        <button onclick="removePendingFile(${i})"
+          class="absolute -top-1.5 -right-1.5 w-5 h-5 bg-gray-700 text-white rounded-full text-[9px]
+                 flex items-center justify-center opacity-0 group-hover:opacity-100 transition">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>`;
+  }).join('');
+}
+
+function removePendingFile(index) {
+  URL.revokeObjectURL(pendingFiles[index].previewUrl);
+  pendingFiles.splice(index, 1);
+  renderFilePreview();
+}
+
+
+// ═══════════════════════════════════════════════════════════════
+//  SEND (text or file)
+// ═══════════════════════════════════════════════════════════════
+function sendMessage() {
+  unlockAudio();
+  const input    = document.getElementById('msgInput');
+  const text     = input.value.trim();
+  const hasFiles = pendingFiles.length > 0;
+  if (!text && !hasFiles) return;
+
+  if (hasFiles) {
+    const caption     = text;
+    const filesToSend = [...pendingFiles];
+    pendingFiles      = [];
+    renderFilePreview();
+    input.value = '';
+    autoResize(input);
+    filesToSend.forEach(f => uploadFile(f.file, caption));
+    return;
+  }
+
+  sendTextMessage(text);
+  input.value = '';
+  autoResize(input);
+}
+
+function sendTextMessage(text) {
+  const sendBtn = document.getElementById('sendBtn');
+  sendBtn.disabled = true;
+
+  const tempId = 'temp-' + Date.now() + '-' + Math.random().toString(36).slice(2);
+  const now    = new Date().toLocaleTimeString('en-IN', { hour:'2-digit', minute:'2-digit', hour12:true });
+
+  appendTextMessage({ type:'outgoing', text, time:now, msgId:tempId, sending:true });
+
+  fetch(SEND_URL, {
+    method:  'POST',
+    headers: { 'X-CSRFToken': CSRF_TOKEN, 'Content-Type': 'application/json' },
+    body:    JSON.stringify({ message: text })
+  })
+  .then(r => r.json())
+  .then(data => {
+    const tempEl = document.querySelector(`[data-msg-id="${tempId}"]`);
+    if (data.success && data.message) {
+      if (tempEl) {
+        tempEl.dataset.msgId = data.message.id;
+        const metaEl = tempEl.querySelector('.msg-meta-time');
+        if (metaEl) metaEl.textContent = data.message.time;
+        // Accepted by WhatsApp only; delivered/read/failed arrive later via the status webhook
+        const statusEl = tempEl.querySelector('.msg-status');
+        if (statusEl) {
+          statusEl.innerHTML = '<i class="fa-solid fa-check text-gray-400"></i>';
+          statusEl.dataset.status = 'sent';
+        }
+        // Update copy button data after real ID is assigned
+        const copyBtn = tempEl.querySelector('.msg-copy-btn');
+        if (copyBtn) copyBtn.setAttribute('onclick', `copyMessage(this, ${JSON.stringify(text)})`);
+      }
+      lastMsgId = data.message.id;
+    } else {
+      markTextSendFailed(tempEl, data.error);
+    }
+  })
+  .catch(() => {
+    markTextSendFailed(document.querySelector(`[data-msg-id="${tempId}"]`), 'Network error - message not sent.');
+  })
+  .finally(() => {
+    sendBtn.disabled = false;
+    document.getElementById('msgInput').focus();
+  });
+}
+
+function markTextSendFailed(el, error) {
+  const reason = error || 'Message was not sent.';
+  if (el) {
+    el.style.opacity = '0.6';
+    const statusEl = el.querySelector('.msg-status');
+    if (statusEl) {
+      statusEl.innerHTML = failIconWith(reason);
+      statusEl.dataset.status = 'failed';
+      statusEl.title = reason;
+    }
+  }
+  alert('Message NOT sent:\n\n' + reason);
+  refreshDeliveryNotes();
+}
+
+// TrypBot posts "why it was not delivered + how to fix" as a system message;
+// pull any new ones from the server and add them to the open chat.
+function refreshDeliveryNotes() {
+  if (typeof SESSION_ID === 'undefined') return;
+  fetch(location.pathname, { credentials: 'same-origin' })
+    .then(r => r.text())
+    .then(html => {
+      const doc = new DOMParser().parseFromString(html, 'text/html');
+      const box = document.getElementById('chatMessages');
+      if (!box) return;
+      doc.querySelectorAll('[data-delivery-note]').forEach(n => {
+        if (box.querySelector(`[data-msg-id="${n.dataset.msgId}"]`)) return;
+        box.appendChild(document.importNode(n, true));
+        box.scrollTop = box.scrollHeight;
+      });
+    })
+    .catch(() => {});
+}
+
+function uploadFile(file, caption) {
+  const tempId  = 'temp-' + Date.now() + '-' + Math.random().toString(36).slice(2);
+  const now     = new Date().toLocaleTimeString('en-IN', { hour:'2-digit', minute:'2-digit', hour12:true });
+  const isImage = file.type.startsWith('image/');
+  const isVideo = file.type.startsWith('video/');
+  const isAudio = file.type.startsWith('audio/');
+  const objUrl  = URL.createObjectURL(file);
+
+  appendFileMessage({ tempId, file, objUrl, isImage, isVideo, isAudio, caption, time:now, sending:true });
+
+  const formData = new FormData();
+  formData.append('file',    file);
+  formData.append('caption', caption || '');
+
+  const xhr = new XMLHttpRequest();
+  xhr.open('POST', SEND_FILE_URL);
+  xhr.setRequestHeader('X-CSRFToken', CSRF_TOKEN);
+
+  xhr.upload.addEventListener('progress', (e) => {
+    if (!e.lengthComputable) return;
+    const pct = Math.round((e.loaded / e.total) * 100);
+    const bar = document.querySelector(`[data-msg-id="${tempId}"] .upload-progress`);
+    if (bar) bar.style.width = pct + '%';
+  });
+
+  xhr.addEventListener('load', () => {
+    URL.revokeObjectURL(objUrl);
+    const tempEl = document.querySelector(`[data-msg-id="${tempId}"]`);
+    let data = null;
+    try { data = JSON.parse(xhr.responseText); } catch(e) {}
+    if (data && (data.success || xhr.status === 200) && data.message) {
+      if (tempEl) {
+        tempEl.dataset.msgId = data.message.id;
+        const bar = tempEl.querySelector('.upload-progress-wrap');
+        if (bar) bar.remove();
+        const metaEl = tempEl.querySelector('.msg-meta-time');
+        if (metaEl) metaEl.textContent = data.message.time;
+        const statusEl = tempEl.querySelector('.msg-status');
+        if (statusEl) {
+          statusEl.innerHTML = '<i class="fa-solid fa-check-double text-[#4db0f5]"></i>';
+          statusEl.dataset.status = 'delivered';
+        }
+        if (isImage && data.message.media_url) {
+          const img = tempEl.querySelector('img.msg-img');
+          if (img) { img.src = data.message.media_url; img.onclick = () => openLightbox(img.src); }
+        }
+        if (isVideo && data.message.media_url) {
+          const vid = tempEl.querySelector('video.msg-video');
+          if (vid) vid.src = data.message.media_url;
+        }
+      }
+      lastMsgId = data.message.id;
+    } else {
+      if (tempEl) {
+        tempEl.style.opacity = '0.5';
+        const statusEl = tempEl.querySelector('.msg-status');
+        if (statusEl) {
+          const errMsg = (data && data.error) ? data.error : 'Failed';
+          statusEl.innerHTML = failIconWith(errMsg);
+          statusEl.dataset.status = 'failed';
+        }
+      }
+    }
+  });
+
+  xhr.addEventListener('error', () => {
+    URL.revokeObjectURL(objUrl);
+    const el = document.querySelector(`[data-msg-id="${tempId}"]`);
+    if (el) {
+      el.style.opacity = '0.4';
+      const statusEl = el.querySelector('.msg-status');
+      if (statusEl) {
+        statusEl.innerHTML = failIconWith('The file could not be uploaded (network problem).');
+        statusEl.dataset.status = 'failed';
+      }
+    }
+  });
+
+  xhr.send(formData);
+}
+
+
+// ─── Append helpers ───────────────────────────────────────────
+
+/**
+ * Build copy button HTML for dynamically injected messages.
+ * position: 'left' for outgoing, 'right' for incoming.
+ */
+function _copyBtnHtml(text, position) {
+  const escaped = escHtml(text || '');
+  // We use data-copy-text to avoid quoting nightmares in onclick
+  return `<button class="msg-copy-btn" data-copy-text="${escaped}"
+    onclick="copyMessage(this, this.dataset.copyText)" title="Copy message">
+    <i class="fa-regular fa-copy text-[11px]"></i>
+  </button>`;
+}
+
+function appendTextMessage(opts) {
+  const wrap   = document.getElementById('chatMessages');
+  const bottom = document.getElementById('msgBottom');
+  const row    = document.createElement('div');
+  row.setAttribute('data-msg-id', opts.msgId || '');
+
+  const wasNearBottom = isNearBottom();
+
+  if (opts.type === 'outgoing') {
+    row.className = 'flex justify-end mb-1 msg-row msg-row-out relative';
+
+    let mediaHtml = '';
+    if (opts.mediaType === 'image' && opts.mediaUrl) {
+      mediaHtml = `<img src="${escHtml(opts.mediaUrl)}" class="msg-img" onclick="openLightbox(this.src)" alt="image">`;
+    } else if (opts.mediaType === 'video' && opts.mediaUrl) {
+      mediaHtml = `<video src="${escHtml(opts.mediaUrl)}" controls class="msg-video"></video>`;
+    } else if (opts.mediaType === 'audio' && opts.mediaUrl) {
+      mediaHtml = `<audio src="${escHtml(opts.mediaUrl)}" controls class="w-full mb-1"></audio>`;
+    } else if (opts.mediaType === 'document' && opts.mediaUrl) {
+      mediaHtml = `
+        <a href="${escHtml(opts.mediaUrl)}" target="_blank" class="msg-file-block">
+          <div class="file-icon"><i class="fa-solid fa-file-pdf"></i></div>
+          <div class="file-meta">
+            <span class="file-name">${escHtml(opts.filename || 'Document')}</span>
+            <span class="file-sub">Tap to open</span>
+          </div>
+        </a>`;
+    }
+
+    const textHtml = opts.text
+      ? `<p class="text-sm text-gray-800 leading-relaxed whitespace-pre-wrap break-words${mediaHtml ? ' mt-1' : ''} msg-text-content">${escHtml(opts.text)}</p>`
+      : '';
+
+    row.innerHTML = `
+      <div class="max-w-[85%] sm:max-w-[65%] relative">
+        ${_copyBtnHtml(opts.text || opts.filename || '', 'left')}
+        <div class="bg-[#dcf8c6] rounded-xl msg-out px-3 py-2 shadow-sm relative">
+          <svg class="absolute -right-2 top-0 w-4 h-4 fill-current text-[#dcf8c6]" viewBox="0 0 8 13">
+            <path d="M2.812 1H8v11.193L6.533 9.568C4.071 7.625 2.812 4.625 2.812 1z" fill="#dcf8c6"/>
+          </svg>
+          ${opts.senderLabel ? `<div class="text-[10px] text-[#128C7E] font-semibold mb-0.5">${escHtml(opts.senderLabel)}</div>` : ''}
+          ${mediaHtml}
+          ${textHtml}
+          <div class="flex items-center justify-end gap-1 mt-1 sending-ticks">
+            <span class="text-[10px] text-gray-500 msg-meta-time">${opts.time || ''}</span>
+            <span class="msg-status text-xs leading-none" data-status="${opts.status || 'sent'}">
+              ${opts.status === 'sent' || opts.sending
+                ? '<i class="fa-solid fa-check text-gray-400"></i>'
+                : opts.status === 'delivered'
+                ? '<i class="fa-solid fa-check-double text-[#4db0f5]"></i>'
+                : opts.status === 'read'
+                ? '<i class="fa-solid fa-check-double text-blue-500"></i>'
+                : opts.status === 'failed'
+                ? FAIL_ICON
+                : '<i class="fa-solid fa-check text-gray-400"></i>'}
+            </span>
+          </div>
+        </div>
+      </div>`;
+  } else {
+    row.className = 'flex justify-start mb-1 msg-row msg-row-in relative';
+
+    let mediaHtml = '';
+    if (opts.mediaType === 'image' && opts.mediaUrl) {
+      mediaHtml = `<img src="${escHtml(opts.mediaUrl)}" class="msg-img" onclick="openLightbox(this.src)" alt="image">`;
+    } else if (opts.mediaType === 'video' && opts.mediaUrl) {
+      mediaHtml = `<video src="${escHtml(opts.mediaUrl)}" controls class="msg-video"></video>`;
+    } else if (opts.mediaType === 'audio' && opts.mediaUrl) {
+      mediaHtml = `<audio src="${escHtml(opts.mediaUrl)}" controls class="w-full mb-1"></audio>`;
+    } else if (opts.mediaType === 'document' && opts.mediaUrl) {
+      mediaHtml = `
+        <a href="${escHtml(opts.mediaUrl)}" target="_blank" class="msg-file-block">
+          <div class="file-icon"><i class="fa-solid fa-file-pdf"></i></div>
+          <div class="file-meta">
+            <span class="file-name">${escHtml(opts.filename || 'Document')}</span>
+            <span class="file-sub">Tap to open</span>
+          </div>
+        </a>`;
+    }
+
+    const textHtml = opts.text
+      ? `<p class="text-sm text-gray-800 leading-relaxed whitespace-pre-wrap break-words${mediaHtml ? ' mt-1' : ''} msg-text-content">${escHtml(opts.text)}</p>`
+      : '';
+
+    row.innerHTML = `
+      <div class="max-w-[85%] sm:max-w-[65%] relative">
+        <div class="bg-white rounded-xl msg-in px-3 py-2 shadow-sm relative">
+          <svg class="absolute -left-2 top-0 w-4 h-4 text-white fill-current" viewBox="0 0 8 13">
+            <path d="M5.188 1H0v11.193l1.467-1.625C3.929 7.625 5.188 4.625 5.188 1z" fill="white" stroke="#e5e7eb" stroke-width="0.5"/>
+          </svg>
+          ${opts.senderLabel ? `<div class="text-[10px] text-gray-400 mb-0.5">${escHtml(opts.senderLabel)}</div>` : ''}
+          ${mediaHtml}
+          ${textHtml}
+          <div class="text-[10px] text-gray-400 mt-1 text-right">${opts.time || ''}</div>
+        </div>
+        ${_copyBtnHtml(opts.text || opts.filename || '', 'right')}
+      </div>`;
+  }
+
+  wrap.insertBefore(row, bottom);
+  if (wasNearBottom) scrollToBottom();
+}
+
+function appendFileMessage({ tempId, file, objUrl, isImage, isVideo, isAudio, caption, time, sending }) {
+  const wrap   = document.getElementById('chatMessages');
+  const bottom = document.getElementById('msgBottom');
+  const row    = document.createElement('div');
+  row.setAttribute('data-msg-id', tempId);
+  row.className = 'flex justify-end mb-1 msg-row msg-row-out relative';
+
+  const wasNearBottom = isNearBottom();
+
+  let mediaHtml = '';
+  if (isImage) {
+    mediaHtml = `<img src="${objUrl}" class="msg-img" alt="${escHtml(file.name)}" onclick="openLightbox(this.src)">`;
+  } else if (isVideo) {
+    mediaHtml = `<video src="${objUrl}" controls class="msg-video"></video>`;
+  } else if (isAudio) {
+    mediaHtml = `<audio src="${objUrl}" controls class="w-full mb-1"></audio>`;
+  } else {
+    const icon = fileKindIcon(file.type, file.name);
+    mediaHtml = `
+      <div class="msg-file-block">
+        <div class="file-icon"><i class="fa-solid ${icon}"></i></div>
+        <div class="file-meta">
+          <span class="file-name">${escHtml(file.name)}</span>
+          <span class="file-sub">Uploading…</span>
+        </div>
+      </div>`;
+  }
+
+  const captionHtml = caption
+    ? `<p class="text-sm text-gray-700 mt-1 whitespace-pre-wrap break-words msg-text-content">${escHtml(caption)}</p>` : '';
+
+  row.innerHTML = `
+    <div class="max-w-[85%] sm:max-w-[65%] relative">
+      ${_copyBtnHtml(caption || file.name, 'left')}
+      <div class="bg-[#dcf8c6] rounded-xl msg-out px-3 py-2 shadow-sm relative">
+        <svg class="absolute -right-2 top-0 w-4 h-4 fill-current text-[#dcf8c6]" viewBox="0 0 8 13">
+          <path d="M2.812 1H8v11.193L6.533 9.568C4.071 7.625 2.812 4.625 2.812 1z" fill="#dcf8c6"/>
+        </svg>
+        ${mediaHtml}
+        ${captionHtml}
+        <div class="upload-progress-wrap mt-1">
+          <div class="upload-progress" style="width:0%"></div>
+        </div>
+        <div class="flex items-center justify-end gap-1 mt-1 sending-ticks">
+          <span class="text-[10px] text-gray-500">${time}</span>
+          <span class="msg-status text-xs leading-none" data-status="sent">
+            ${sending ? '<i class="fa-solid fa-check text-gray-400"></i>' : '<i class="fa-solid fa-check text-gray-400"></i>'}
+          </span>
+        </div>
+      </div>
+    </div>`;
+
+  wrap.insertBefore(row, bottom);
+  if (wasNearBottom) scrollToBottom();
+}
+
+function handleMsgKeydown(e) {
+  if (e.key === 'Enter' && !e.shiftKey && window.innerWidth >= 768) {
+    e.preventDefault();
+    sendMessage();
+  }
+}
+
+function autoResize(el) {
+  el.style.height = 'auto';
+  el.style.height = Math.min(el.scrollHeight, 120) + 'px';
+}
+
+
+// ═══════════════════════════════════════════════════════════════
+//  LIVE POLLING
+// ═══════════════════════════════════════════════════════════════
+setInterval(() => {
+  fetch(`${LIVE_MSG_URL}?after=${lastMsgId}`)
+    .then(r => r.json())
+    .then(data => {
+      if (!data.messages) return;
+      data.messages.forEach(m => {
+        if (+m.id <= +lastMsgId) return;
+        if (document.querySelector(`[data-msg-id="${m.id}"]`)) { lastMsgId = m.id; return; }
+        lastMsgId = m.id;
+        const isOut = (m.sender_type === 'sales' || m.sender_type === 'bot' || m.sender_type === 'agent');
+        appendTextMessage({
+          type:        isOut ? 'outgoing' : 'incoming',
+          text:        m.message,
+          time:        m.created_at,
+          msgId:       m.id,
+          mediaUrl:    m.media_url   || '',
+          mediaType:   m.media_type  || '',
+          filename:    m.filename    || '',
+          senderLabel: m.sender_type === 'bot'
+            ? '🤖 TrypBot AI'
+            : (m.sender_type === 'user' ? '' : m.sender_name || ''),
+        });
+      });
+    }).catch(() => {});
+}, 3000);
+
+
+// ═══════════════════════════════════════════════════════════════
+//  LABEL
+// ═══════════════════════════════════════════════════════════════
+function updateLabel(labelId) {
+  fetch(LABEL_URL, {
+    method:  'POST',
+    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF_TOKEN },
+    body:    JSON.stringify({ session_id: SESSION_ID, label_id: labelId || null })
+  })
+  .then(r => r.json())
+  .then(data => {
+    if (!data.success) return;
+    const badge = document.querySelector(`#sidebar-session-${SESSION_ID} [id^="sidebar-label-"]`);
+    if (badge && data.label_name) {
+      const key = data.label_name.toUpperCase().replace(/\s/g, '');
+      badge.className = `conv-label-pill lbl-${key}`;
+      if (data.label_color) badge.style.background = data.label_color;
+      badge.textContent = data.label_name;
+    }
+  }).catch(() => {});
+}
+
+
+// ═══════════════════════════════════════════════════════════════
+//  ASSIGN
+// ═══════════════════════════════════════════════════════════════
+function assignChat(userId) {
+  fetch(ASSIGN_URL, {
+    method:  'POST',
+    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF_TOKEN },
+    body:    JSON.stringify({ session_id: SESSION_ID, user_id: userId || null })
+  }).then(r => r.json()).catch(() => {});
+}
+
+
+// ═══════════════════════════════════════════════════════════════
+//  HUMAN TAKEOVER
+// ═══════════════════════════════════════════════════════════════
+function toggleHumanTakeover() {
+  fetch(TAKEOVER_URL, {
+    method:  'POST',
+    headers: { 'X-CSRFToken': CSRF_TOKEN }
+  })
+  .then(r => r.json())
+  .then(data => {
+    if (typeof data.is_human_takeover !== 'undefined') {
+      isHumanTakeover = data.is_human_takeover;
+      updateHumanTakeoverUI(isHumanTakeover);
+    }
+    document.getElementById('moreMenu').classList.add('hidden');
+  }).catch(() => {});
+}
+
+function updateHumanTakeoverUI(isHuman) {
+  const indicator = document.getElementById('statusIndicator');
+  if (indicator) {
+    indicator.className = `flex items-center gap-1.5 px-2 py-0.5 rounded-full font-semibold text-xs ` +
+      (isHuman
+        ? 'bg-blue-50 text-blue-600 border border-blue-200'
+        : 'bg-green-50 text-green-700 border border-green-200');
+    indicator.innerHTML = isHuman
+      ? '<i class="fa-solid fa-user-check text-[10px]"></i> Human Mode'
+      : '<i class="fa-solid fa-robot text-[10px]"></i> AI Active';
+  }
+  const btn = document.getElementById('humanTakeoverBtn');
+  if (btn) {
+    btn.className = btn.className
+      .replace('text-gray-700','').replace('text-blue-600','').trim()
+      + (isHuman ? ' text-blue-600' : ' text-gray-700');
+    btn.innerHTML = isHuman
+      ? `<i class="fa-solid fa-user-check w-4 text-blue-500"></i>
+         <div><div class="font-semibold">Human ON</div><div class="text-xs text-gray-400">Bot is paused</div></div>
+         <i class="fa-solid fa-toggle-on text-blue-500 ml-auto text-lg"></i>`
+      : `<i class="fa-solid fa-robot w-4 text-green-500"></i>
+         <div><div class="font-semibold">AI Mode</div><div class="text-xs text-gray-400">Bot is active</div></div>
+         <i class="fa-solid fa-toggle-off text-gray-300 ml-auto text-lg"></i>`;
+  }
+}
+
+
+// ═══════════════════════════════════════════════════════════════
+//  CLOSE / REOPEN TICKET
+// ═══════════════════════════════════════════════════════════════
+function toggleCloseTicket() {
+  fetch(CLOSE_URL, {
+    method:  'POST',
+    headers: { 'X-CSRFToken': CSRF_TOKEN }
+  })
+  .then(r => r.json())
+  .then(data => {
+    isTicketClosed = data.closed;
+    const btn = document.getElementById('closeTicketBtn');
+    if (btn) {
+      if (data.closed) {
+        btn.className = btn.className.replace('text-red-600','text-green-600');
+        btn.innerHTML = `<i class="fa-solid fa-folder-open w-4"></i>
+          <div><div class="font-semibold">Reopen Ticket</div><div class="text-xs text-gray-400">Ticket is closed</div></div>`;
+      } else {
+        btn.className = btn.className.replace('text-green-600','text-red-600');
+        btn.innerHTML = `<i class="fa-solid fa-circle-xmark w-4"></i>
+          <div><div class="font-semibold">Close Ticket</div><div class="text-xs text-gray-400">Mark as resolved</div></div>`;
+      }
+    }
+    let closedBadge = document.getElementById('closedBadge');
+    if (data.closed && !closedBadge) {
+      closedBadge = document.createElement('div');
+      closedBadge.id = 'closedBadge';
+      closedBadge.className = 'flex items-center gap-1 bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full border border-gray-200 font-semibold';
+      closedBadge.innerHTML = '<i class="fa-solid fa-lock text-[10px]"></i> Closed';
+      document.getElementById('chatStatusBar').insertBefore(
+        closedBadge,
+        document.querySelector('#chatStatusBar .flex-1')
+      );
+    } else if (!data.closed && closedBadge) {
+      closedBadge.remove();
+    }
+    document.getElementById('moreMenu').classList.add('hidden');
+  }).catch(() => {});
+}
+
+
+// ═══════════════════════════════════════════════════════════════
+//  SIDE PANEL
+// ═══════════════════════════════════════════════════════════════
+function openPanel(tab) {
+  document.getElementById('sidePanel').classList.remove('translate-x-full');
+  document.getElementById('panelOverlay').classList.remove('hidden');
+  switchTab(tab);
+}
+function closePanel() {
+  document.getElementById('sidePanel').classList.add('translate-x-full');
+  document.getElementById('panelOverlay').classList.add('hidden');
+}
+function switchTab(tab) {
+  const isNotes = (tab === 'notes');
+  const isReminders = (tab === 'reminders');
+  const isEngagement = (tab === 'engagement');
+  
+  document.getElementById('notesContent').classList.toggle('hidden',     !isNotes);
+  document.getElementById('remindersContent').classList.toggle('hidden',  !isReminders);
+  document.getElementById('engagementContent').classList.toggle('hidden', !isEngagement);
+  
+  document.getElementById('notesContent').classList.toggle('flex',        isNotes);
+  document.getElementById('remindersContent').classList.toggle('flex',   isReminders);
+  document.getElementById('engagementContent').classList.toggle('flex',  isEngagement);
+  
+  document.getElementById('notesTabBtn').className = isNotes
+    ? 'px-3 py-1.5 text-xs font-semibold rounded-lg transition bg-white/20 text-white'
+    : 'px-3 py-1.5 text-xs font-semibold rounded-lg transition text-white/70 hover:bg-white/10';
+  document.getElementById('remindersTabBtn').className = isReminders
+    ? 'px-3 py-1.5 text-xs font-semibold rounded-lg transition bg-white/20 text-white'
+    : 'px-3 py-1.5 text-xs font-semibold rounded-lg transition text-white/70 hover:bg-white/10';
+  document.getElementById('engagementTabBtn').className = isEngagement
+    ? 'px-3 py-1.5 text-xs font-semibold rounded-lg transition bg-white/20 text-white'
+    : 'px-3 py-1.5 text-xs font-semibold rounded-lg transition text-white/70 hover:bg-white/10';
+}
+
+
+// ═══════════════════════════════════════════════════════════════
+//  NOTES
+// ═══════════════════════════════════════════════════════════════
+function addNote() {
+  const text = document.getElementById('noteInput').value.trim();
+  if (!text) return;
+  fetch(NOTE_URL, {
+    method:  'POST',
+    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF_TOKEN },
+    body:    JSON.stringify({ session_id: SESSION_ID, note: text })
+  })
+  .then(r => r.json())
+  .then(data => {
+    if (!data.success) return;
+    document.getElementById('notesEmpty')?.remove();
+    document.getElementById('noteInput').value = '';
+    const el = document.createElement('div');
+    el.id = `note-${data.note.id}`;
+    el.className = 'bg-yellow-50 border border-yellow-200 rounded-xl p-3 shadow-sm';
+    el.innerHTML = `
+      <p class="text-sm text-gray-700 leading-relaxed">${escHtml(data.note.text)}</p>
+      <div class="flex items-center justify-between mt-2">
+        <div class="text-[10px] text-gray-400">
+          <span class="font-medium text-gray-500">${escHtml(data.note.added_by)}</span> · ${data.note.created_at}
+        </div>
+        <button onclick="deleteNote(${data.note.id})" class="text-gray-300 hover:text-red-500 transition p-1">
+          <i class="fa-solid fa-trash text-xs"></i>
+        </button>
+      </div>`;
+    document.getElementById('notesList').prepend(el);
+  }).catch(() => {});
+}
+
+function deleteNote(id) {
+  if (!confirm('Delete this note?')) return;
+  fetch(`{% url 'crm_delete_note' 0 %}`.replace('/0/', `/${id}/`), {
+    method: 'GET', headers: { 'X-CSRFToken': CSRF_TOKEN }
+  }).then(() => document.getElementById(`note-${id}`)?.remove());
+}
+
+
+// ═══════════════════════════════════════════════════════════════
+//  REMINDERS
+// ═══════════════════════════════════════════════════════════════
+function addReminder() {
+  const note = document.getElementById('reminderNote').value.trim();
+  const at   = document.getElementById('reminderAt').value;
+  if (!note || !at) { alert('Please fill in the note and date/time.'); return; }
+  fetch(REMINDER_URL, {
+    method:  'POST',
+    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF_TOKEN },
+    body:    JSON.stringify({ session_id: SESSION_ID, note, reminder_at: at })
+  })
+  .then(r => r.json())
+  .then(data => {
+    if (!data.success) return;
+    document.getElementById('remEmpty')?.remove();
+    document.getElementById('reminderNote').value = '';
+    document.getElementById('reminderAt').value   = '';
+    const el = document.createElement('div');
+    el.id = `rem-${data.reminder.id}`;
+    el.className = 'bg-blue-50 border border-blue-200 rounded-xl p-3 shadow-sm';
+    el.innerHTML = `
+      <p class="text-sm text-gray-700">${escHtml(data.reminder.note)}</p>
+      <div class="flex items-center justify-between mt-2">
+        <span class="text-[10px] text-blue-500 flex items-center gap-1">
+          <i class="fa-regular fa-clock"></i>${data.reminder.reminder_at}
+        </span>
+        <div class="flex items-center gap-2">
+          <label class="flex items-center gap-1 text-[10px] text-gray-500 cursor-pointer">
+            <input type="checkbox" onchange="markReminderDone(${data.reminder.id}, this)"
+              class="w-3 h-3 accent-[#25D366]" />Done
+          </label>
+          <button onclick="deleteReminder(${data.reminder.id})"
+            class="text-gray-300 hover:text-red-500 transition p-1">
+            <i class="fa-solid fa-trash text-xs"></i>
+          </button>
+        </div>
+      </div>`;
+    document.getElementById('remindersList').prepend(el);
+  }).catch(() => {});
+}
+
+function markReminderDone(id, el) {
+  fetch(`{% url 'crm_reminder_done' 0 %}`.replace('/0/', `/${id}/`), {
+    method: 'GET', headers: { 'X-CSRFToken': CSRF_TOKEN }
+  }).then(() => {
+    const rem = document.getElementById(`rem-${id}`);
+    if (rem) rem.classList.toggle('opacity-50', el.checked);
+  });
+}
+
+function deleteReminder(id) {
+  if (!confirm('Delete reminder?')) return;
+  fetch(`{% url 'crm_reminder_delete' 0 %}`.replace('/0/', `/${id}/`), {
+    method: 'GET', headers: { 'X-CSRFToken': CSRF_TOKEN }
+  }).then(() => document.getElementById(`rem-${id}`)?.remove());
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  24-HOUR WINDOW COUNTDOWN
+// ═══════════════════════════════════════════════════════════════
+function updateCountdowns() {
+  const countdownElements = document.querySelectorAll('[data-last-msg-time]');
+  countdownElements.forEach(el => {
+    const lastMsgTime = el.getAttribute('data-last-msg-time');
+    if (!lastMsgTime) return;
+
+    const lastDate = new Date(lastMsgTime);
+    const now = new Date();
+    const diffMs = now - lastDate;
+    const hours24 = 24 * 60 * 60 * 1000;
+    const remainingMs = hours24 - diffMs;
+
+    const textSpan = el.querySelector('.countdown-text');
+    if (!textSpan) return;
+
+    if (remainingMs <= 0) {
+      textSpan.textContent = 'Window expired';
+      el.classList.remove('text-orange-600');
+      el.classList.add('text-red-600');
+    } else {
+      const hours = Math.floor(remainingMs / (60 * 60 * 1000));
+      const minutes = Math.floor((remainingMs % (60 * 60 * 1000)) / (60 * 1000));
+      textSpan.textContent = `${hours}h ${minutes}m left`;
+    }
+  });
+}
+
+// Check if 24-hour window has expired for active session and toggle messaging input
+function checkMessagingWindow() {
+  {% if active_session and active_session.last_customer_message_time %}
+  const lastMsgTime = new Date('{{ active_session.last_customer_message_time|date:"Y-m-d H:i:s" }}');
+  const now = new Date();
+  const diffMs = now - lastMsgTime;
+  const hours24 = 24 * 60 * 60 * 1000;
+  
+  const normalInput = document.getElementById('normalMessagingInput');
+  const templateInput = document.getElementById('templateMessagingInput');
+  
+  if (diffMs >= hours24) {
+    // Window expired - show template messaging input
+    if (normalInput) normalInput.classList.add('hidden');
+    if (templateInput) templateInput.classList.remove('hidden');
+  } else {
+    // Window still active - show normal messaging input
+    if (normalInput) normalInput.classList.remove('hidden');
+    if (templateInput) templateInput.classList.add('hidden');
+  }
+  {% endif %}
+}
+
+// Fill template message when template is selected
+function fillTemplateMessage() {
+  const select = document.getElementById('templateSelect');
+  const selectedOption = select.options[select.selectedIndex];
+  const templateText = selectedOption.getAttribute('data-text');
+  
+  if (templateText) {
+    // You could optionally fill the normal message input for editing
+    // document.getElementById('messageInput').value = templateText;
+  }
+}
+
+// Send template message
+function sendTemplateMessage() {
+  const select = document.getElementById('templateSelect');
+  const selectedOption = select.options[select.selectedIndex];
+  const templateId = select.value;
+  const templateText = selectedOption.getAttribute('data-text');
+  
+  if (!templateId || !templateText) {
+    alert('Please select a template first');
+    return;
+  }
+  
+  // Send the template message via the existing send message endpoint
+  const messageInput = document.getElementById('messageInput');
+  messageInput.value = templateText;
+  sendMessage();
+  
+  // Reset the select
+  select.value = '';
+}
+
+// Update countdowns every minute
+setInterval(updateCountdowns, 60000);
+// Check messaging window every minute
+setInterval(checkMessagingWindow, 60000);
+// Initial update
+updateCountdowns();
+checkMessagingWindow();
+
+{% else %}
+// No active session — only sidebar controls wired above.
+{% endif %}
+</script>
+
+<script>
+// ═══════════════════════════════════════════════════════════════
+//  CONVERSATION LIST — load the next 50 when the user nears the end
+// ═══════════════════════════════════════════════════════════════
+// "Xh Ym left" of the 24-hour WhatsApp window on each row.
+function listCountdowns() {
+  if (typeof updateCountdowns === 'function') { updateCountdowns(); return; }
+  document.querySelectorAll('[data-last-msg-time]').forEach(el => {
+    const span = el.querySelector('.countdown-text');
+    if (!span) return;
+    const left = 24 * 3600 * 1000 - (Date.now() - new Date(el.dataset.lastMsgTime).getTime());
+    if (left <= 0) {
+      span.textContent = 'Window expired';
+      el.classList.remove('text-orange-600');
+      el.classList.add('text-red-600');
+    } else {
+      span.textContent = `${Math.floor(left / 3600000)}h ${Math.floor((left % 3600000) / 60000)}m left`;
+    }
+  });
+}
+listCountdowns();
+setInterval(listCountdowns, 60000);
+
+(function () {
+  const list = document.getElementById('convList');
+  let sentinel = document.getElementById('convSentinel');
+  if (!list || !sentinel) return;
+  let loading = false;
+
+  function lastDividerDate() {
+    const dividers = list.querySelectorAll('.date-divider');
+    return dividers.length ? dividers[dividers.length - 1].dataset.date : '';
+  }
+
+  function loadMore() {
+    const url = sentinel && sentinel.dataset.next;
+    if (loading || !url) return;
+    loading = true;
+    fetch(url, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+      .then(r => r.json())
+      .then(data => {
+        const tmp = document.createElement('div');
+        tmp.innerHTML = data.html || '';
+        // Same day continues from the previous page: drop the repeated date header.
+        const first = tmp.querySelector('.date-divider');
+        if (first && first.dataset.date === lastDividerDate()) first.remove();
+        tmp.querySelectorAll('.conv-row').forEach(row => {
+          if (document.getElementById(row.id)) row.remove();   // already listed
+        });
+        while (tmp.firstChild) list.insertBefore(tmp.firstChild, sentinel);
+        if (data.next_url) {
+          sentinel.dataset.next = data.next_url;
+        } else {
+          sentinel.remove();
+          sentinel = null;
+        }
+        listCountdowns();
+      })
+      .catch(() => { if (sentinel) sentinel.textContent = 'Could not load more chats. Scroll to retry.'; })
+      .finally(() => {
+        loading = false;
+        // Short screens: keep filling until the list can scroll.
+        if (sentinel && list.scrollHeight <= list.clientHeight + 200) loadMore();
+      });
+  }
+
+  new IntersectionObserver(entries => {
+    if (entries.some(e => e.isIntersecting)) loadMore();
+  }, { root: list, rootMargin: '600px 0px' }).observe(sentinel);
+})();
+
+
+{% if active_session %}
+// ═══════════════════════════════════════════════════════════════
+//  PHONE CHAT HEADER
+// ═══════════════════════════════════════════════════════════════
+const PH_SESSION = {{ active_session.id }};
+const PH_TICKET = '{{ active_session.id|stringformat:"06d" }}';
+let phClosed = {% if conv_status.closed %}true{% else %}false{% endif %};
+let phBlocked = {% if active_session.data.blocked %}true{% else %}false{% endif %};
+let phHuman = {% if active_session.is_human_takeover %}true{% else %}false{% endif %};
+
+function phToast(msg) {
+  const t = document.createElement('div');
+  t.className = 'ph-toast';
+  t.textContent = msg;
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 1800);
+}
+
+function phPost(url, body) {
+  return fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token }}' },
+    body: JSON.stringify(body || {}),
+  }).then(r => r.json());
+}
+
+function phRefreshStatus() {
+  document.getElementById('phStatus').textContent = `${phBlocked ? 'blocked' : (phClosed ? 'closed' : 'open')} (${PH_TICKET})`;
+  document.getElementById('phCloseBtn').textContent = phClosed ? 'Reopen Chat' : 'Close Chat';
+  document.getElementById('phBlockBtn').textContent = phBlocked ? 'Unblock Chat' : 'Block Chat';
+  const bot = document.getElementById('phBotIcon');
+  bot.innerHTML = phHuman
+    ? '<i class="fa-solid fa-user-tie text-[#2563eb] text-base"></i>'
+    : '<i class="fa-solid fa-robot text-[#7c3aed] text-base"></i>';
+  bot.setAttribute('aria-label', phHuman ? 'Human mode: tap to turn the bot on' : 'Bot mode: tap to switch to human');
+}
+
+function togglePhMenu(e) {
+  e.stopPropagation();
+  document.getElementById('phMenu').classList.toggle('hidden');
+}
+document.addEventListener('click', () => document.getElementById('phMenu')?.classList.add('hidden'));
+
+function phToggleClose() {
+  phPost('{% url "crm_close_ticket" active_session.id %}').then(d => {
+    if (!d.success) return phToast(d.error || 'Could not update');
+    phClosed = d.closed;
+    phRefreshStatus();
+    phToast(phClosed ? 'Chat closed' : 'Chat reopened');
+  }).catch(() => phToast('Could not update'));
+}
+
+function phToggleBlock() {
+  if (!phBlocked && !confirm('Block this chat? The bot stops, the number is removed from campaigns and the chat is closed.')) return;
+  phPost('{% url "crm_block_chat" active_session.id %}').then(d => {
+    if (!d.success) return phToast(d.error || 'Could not update');
+    phBlocked = d.blocked;
+    phClosed = d.closed;
+    if (d.blocked) phHuman = true;
+    phRefreshStatus();
+    phToast(phBlocked ? 'Chat blocked' : 'Chat unblocked');
+  }).catch(() => phToast('Could not update'));
+}
+
+function phToggleBot() {
+  phPost('{% url "crm_human_takeover" active_session.id %}').then(d => {
+    if (typeof d.is_human_takeover === 'undefined') return phToast('Could not update');
+    phHuman = d.is_human_takeover;
+    if (typeof updateHumanTakeoverUI === 'function') updateHumanTakeoverUI(phHuman);
+    phRefreshStatus();
+    phToast(phHuman ? 'Human mode: bot paused' : 'Bot mode: bot is replying');
+  }).catch(() => phToast('Could not update'));
+}
+
+function renameChat() {
+  const current = document.getElementById('phName').textContent.trim();
+  const name = prompt('Contact name', current);
+  if (name === null || !name.trim() || name.trim() === current) return;
+  phPost('{% url "crm_rename_chat" active_session.id %}', { name: name.trim() }).then(d => {
+    if (!d.success) return phToast(d.error || 'Could not rename');
+    document.getElementById('phName').textContent = d.name;
+    const side = document.getElementById(`sidebar-name-${PH_SESSION}`);
+    if (side) side.textContent = d.name;
+    phToast('Name updated');
+  }).catch(() => phToast('Could not rename'));
+}
+
+// ── Create Note (+ reminder) ─────────────────────────────────────
+function openNoteSheet() {
+  document.getElementById('nsNote').value = '';
+  const when = document.getElementById('nsWhen');
+  when.value = '';
+  when.classList.add('hidden');
+  document.getElementById('nsReminderLabel').textContent = 'Set Reminder';
+  document.getElementById('noteSheet').classList.add('open');
+  setTimeout(() => document.getElementById('nsNote').focus(), 50);
+}
+
+function closeNoteSheet() { document.getElementById('noteSheet').classList.remove('open'); }
+
+// Paperclip → attach sheet (Document / Video / Gallery / Camera / Audio / Follow Up)
+function openAttachSheet() { document.getElementById('attachSheet').classList.add('open'); }
+function closeAttachSheet() { document.getElementById('attachSheet').classList.remove('open'); }
+function pickAttach(inputId) {
+  closeAttachSheet();
+  document.getElementById(inputId).click();
+}
+function openTplSheet() {
+  closeAttachSheet();
+  document.getElementById('tplSheet').classList.add('open');
+}
+function closeTplSheet() { document.getElementById('tplSheet').classList.remove('open'); }
+
+// Red icon on a failed message → why it was not delivered + how to fix.
+// Icons turned red live (WebSocket / send error) carry no reason yet, so
+// read it from a fresh render of this chat.
+const FAIL_ICON = '<button type="button" class="fail-btn" title="Why was this not delivered?" onclick="showFailReason(this)">' +
+                  '<i class="fa-solid fa-circle-exclamation text-red-500"></i></button>';
+// A red icon that already knows the reason (send refused straight away).
+function failIconWith(reason) {
+  const b = document.createElement('div');
+  b.innerHTML = FAIL_ICON;
+  b.firstChild.dataset.reason = reason || '';
+  b.firstChild.dataset.fix = 'Fix the problem above, then send again. Outside 24 hours, use 📎 → Follow Up to send a template.';
+  return b.innerHTML;
+}
+function openFailSheet(d) {
+  document.getElementById('failReason').textContent = d.reason || 'WhatsApp did not deliver this message.';
+  document.getElementById('failFix').textContent = d.fix || "Check the customer's number, then try again or send a template.";
+  document.getElementById('failCode').textContent = d.code ? `(error ${d.code})` : '';
+  document.getElementById('failGuess').classList.toggle('hidden', !d.guess);
+  document.getElementById('failSheet').classList.add('open');
+}
+function closeFailSheet() { document.getElementById('failSheet').classList.remove('open'); }
+function showFailReason(btn) {
+  if (btn.dataset.reason) { openFailSheet(btn.dataset); return; }
+  const row = btn.closest('[data-msg-id]');
+  const id = row && row.dataset.msgId;
+  fetch(location.pathname, { credentials: 'same-origin' })
+    .then(r => r.text())
+    .then(html => {
+      const doc = new DOMParser().parseFromString(html, 'text/html');
+      const fresh = id && doc.querySelector(`[data-msg-id="${id}"] .fail-btn`);
+      if (fresh) Object.assign(btn.dataset, fresh.dataset);
+      openFailSheet(fresh ? fresh.dataset : {});
+    })
+    .catch(() => openFailSheet({}));
+}
+function sendFollowUp(templateId, btn) {
+  const title = btn.querySelector('span').textContent.trim();
+  if (!confirm(`Send the template "${title}" to this customer?`)) return;
+  btn.disabled = true;
+  sendTemplate(SESSION_ID, templateId);
+}
+
+function toggleNsReminder() {
+  const when = document.getElementById('nsWhen');
+  when.classList.remove('hidden');
+  if (!when.value) {
+    const d = new Date(Date.now() + 24 * 60 * 60 * 1000);   // default: tomorrow
+    when.value = new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+  }
+  try { when.showPicker && when.showPicker(); } catch (_) {}
+  document.getElementById('nsReminderLabel').textContent = 'Reminder';
+}
+
+function saveNote() {
+  const note = document.getElementById('nsNote').value.trim();
+  const when = document.getElementById('nsWhen').value;
+  if (!note) { phToast('Please enter a note'); return; }
+  const btn = document.getElementById('nsSave');
+  btn.disabled = true;
+  const jobs = [phPost('{% url "crm_add_note" %}', { session_id: PH_SESSION, note })];
+  if (when) jobs.push(phPost('{% url "crm_add_reminder" %}', { session_id: PH_SESSION, note, reminder_at: `${when}T10:00` }));
+  Promise.all(jobs)
+    .then(res => {
+      const failed = res.find(r => !r.success);
+      if (failed) throw new Error(failed.error || 'failed');
+      closeNoteSheet();
+      phToast(when ? 'Note and reminder saved' : 'Note saved');
+    })
+    .catch(err => phToast('Could not save: ' + err.message))
+    .finally(() => { btn.disabled = false; });
+}
+{% endif %}
+
+// ═══════════════════════════════════════════════════════════════
+//  SELECT FILTERS
+// ═══════════════════════════════════════════════════════════════
+const LIST_URL = '{% url "crm_chat_home" %}';
+let fsLabels = [];   // selected label ids (strings)
+
+function openFilterSheet() {
+  const q = new URLSearchParams(location.search);
+  fsSetDate(document.getElementById('fsStart'), q.get('start'));
+  fsSetDate(document.getElementById('fsEnd'), q.get('end'));
+  document.getElementById('fsAgent').value = q.get('agent') || '';
+  document.getElementById('fsType').value = q.get('type') || 'open';
+  fsLabels = (q.get('labels') || '').split(',').filter(Boolean);
+  renderFsChips();
+  document.getElementById('filterSheet').classList.add('open');
+}
+
+// "Start Date" / "End Date" placeholders: text until tapped, then the date picker.
+function fsDateFocus(el) {
+  el.type = 'date';
+  try { el.showPicker && el.showPicker(); } catch (_) {}
+}
+function fsDateBlur(el) { if (!el.value) el.type = 'text'; }
+function fsSetDate(el, v) { el.type = v ? 'date' : 'text'; el.value = v || ''; }
+
+function closeFilterSheet() { document.getElementById('filterSheet').classList.remove('open'); }
+
+function renderFsChips() {
+  const box = document.getElementById('fsChips');
+  box.innerHTML = '';
+  fsLabels.forEach(id => {
+    const cb = document.querySelector(`#fsPickList input[value="${id}"]`);
+    if (!cb) return;
+    const chip = document.createElement('span');
+    chip.className = 'fs-chip';
+    chip.style.background = cb.dataset.color;
+    chip.innerHTML = `${escNc(cb.dataset.name)} <i class="fa-solid fa-xmark cursor-pointer"></i>`;
+    chip.querySelector('i').onclick = () => { fsLabels = fsLabels.filter(x => x !== id); renderFsChips(); };
+    box.appendChild(chip);
+  });
+}
+
+function openLabelPicker() {
+  document.querySelectorAll('#fsPickList input').forEach(cb => { cb.checked = fsLabels.includes(cb.value); });
+  document.getElementById('labelPicker').classList.add('open');
+}
+
+function closeLabelPicker() { document.getElementById('labelPicker').classList.remove('open'); }
+
+function doneLabelPicker() {
+  fsLabels = [...document.querySelectorAll('#fsPickList input:checked')].map(cb => cb.value);
+  renderFsChips();
+  closeLabelPicker();
+}
+
+function applyListFilters() {
+  const start = document.getElementById('fsStart').value;
+  const end = document.getElementById('fsEnd').value;
+  if (start && end && end < start) { alert('End date cannot be before the start date.'); return; }
+  const cur = new URLSearchParams(location.search);
+  const q = new URLSearchParams();
+  if (cur.get('q')) q.set('q', cur.get('q'));
+  if (start) q.set('start', start);
+  if (end) q.set('end', end);
+  if (fsLabels.length) q.set('labels', fsLabels.join(','));
+  const agent = document.getElementById('fsAgent').value;
+  if (agent) q.set('agent', agent);
+  q.set('type', document.getElementById('fsType').value);
+  location.href = LIST_URL + '?' + q.toString();
+}
+
+function clearListFilters() { location.href = LIST_URL; }
+
+
+// ═══════════════════════════════════════════════════════════════
+//  ADD NEW CHAT
+// ═══════════════════════════════════════════════════════════════
+let ncTemplates = null;
+
+function openNewChat() {
+  document.getElementById('newChatSheet').classList.add('open');
+  document.getElementById('ncError').classList.add('hidden');
+  if (ncTemplates === null) {
+    fetch('{% url "crm_api_templates" %}')
+      .then(r => r.json())
+      .then(d => { ncTemplates = d.templates || []; renderNcTemplates(); })
+      .catch(() => { ncTemplates = []; renderNcTemplates(); });
+  }
+  setTimeout(() => document.getElementById('ncName').focus(), 50);
+}
+
+function closeNewChat() {
+  document.getElementById('newChatSheet').classList.remove('open');
+}
+
+function renderNcTemplates() {
+  const select = document.getElementById('ncTemplate');
+  const onlyFollowUp = document.getElementById('ncFollowUp').checked;
+  const items = (ncTemplates || []).filter(t => !onlyFollowUp || /follow/i.test(t.title + ' ' + (t.template_text || '')));
+  select.innerHTML = '<option value="">Select an Item</option>' +
+    items.map(t => `<option value="${t.id}">${escNc(t.title)}</option>`).join('');
+  select.onchange = () => {
+    const t = (ncTemplates || []).find(x => String(x.id) === select.value);
+    const pv = document.getElementById('ncTemplatePreview');
+    pv.textContent = t ? t.template_text : '';
+    pv.classList.toggle('hidden', !t);
+  };
+  select.onchange();
+}
+
+function escNc(v) {
+  return String(v || '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+function ncError(msg) {
+  const el = document.getElementById('ncError');
+  el.textContent = msg;
+  el.classList.remove('hidden');
+}
+
+// Bulk upload: up to 50 contacts from Excel / CSV, saved as chats + leads.
+function uploadBulkChats() {
+  const input = document.getElementById('ncBulkFile');
+  const out = document.getElementById('ncBulkResult');
+  const btn = document.getElementById('ncBulkBtn');
+  const show = (ok, text) => {
+    out.className = 'text-xs rounded-lg px-3 py-2 whitespace-pre-line ' +
+      (ok ? 'bg-green-50 border border-green-200 text-green-800' : 'bg-red-50 border border-red-200 text-red-700');
+    out.textContent = text;
+  };
+  if (!input.files.length) { show(false, 'Choose an Excel or CSV file first.'); return; }
+  const fd = new FormData();
+  fd.append('file', input.files[0]);
+  btn.disabled = true;
+  btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-1"></i> Uploading…';
+  fetch("{% url 'crm_bulk_add_chats' %}", { method: 'POST', headers: { 'X-CSRFToken': CSRF_TOKEN }, body: fd })
+    .then(r => r.json())
+    .then(d => {
+      if (!d.success) { show(false, d.error || 'Upload failed.'); return; }
+      let text = `${d.added} new chat(s) added, ${d.existing} already in the CRM.`;
+      if (d.invalid_count) text += `\n${d.invalid_count} row(s) skipped (invalid number):\n` + d.invalid.join('\n');
+      show(true, text);
+      input.value = '';
+      if (d.added) setTimeout(() => { location.href = '/crm/'; }, 2500);
+    })
+    .catch(() => show(false, 'Upload failed. Please try again.'))
+    .finally(() => {
+      btn.disabled = false;
+      btn.innerHTML = '<i class="fa-solid fa-upload mr-1"></i> Upload contacts';
+    });
+}
+
+function submitNewChat() {
+  const name = document.getElementById('ncName').value.trim();
+  let digits = document.getElementById('ncPhone').value.replace(/\D/g, '');
+  const cc = document.getElementById('ncCountry').value;
+  if (cc === '91') digits = digits.replace(/^0+/, '').slice(-10);
+  if (!name) return ncError('Please enter the name.');
+  if (digits.length < 6) return ncError('Please enter a valid mobile number.');
+  const phone = cc + digits;
+  const templateId = document.getElementById('ncTemplate').value;
+  const btn = document.getElementById('ncSend');
+  btn.disabled = true;
+  fetch('{% url "crm_send_to_number" %}', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token }}' },
+    body: JSON.stringify(templateId
+      ? { phone, name, template_id: templateId, is_template: true }
+      : { phone, name, save_only: true }),
+  })
+    .then(async r => {
+      const text = await r.text();
+      try { return JSON.parse(text); } catch (_) { throw new Error(`Server error (HTTP ${r.status})`); }
+    })
+    .then(d => {
+      if (d.success) { window.location.href = d.redirect_url; return; }
+      ncError(d.error || 'Could not add the chat. Please try again.');
+      btn.disabled = false;
+    })
+    .catch(err => { ncError(err.message || 'Could not add the chat.'); btn.disabled = false; });
+}
+</script>
+{% endblock %}

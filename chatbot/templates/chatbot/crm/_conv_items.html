@@ -1,0 +1,86 @@
+{% comment %}
+  Conversation rows for the chat list sidebar. Used by chat_detail.html for the
+  first page and by crm_conversations_page for each next page (infinite scroll).
+  Expects: sessions (a Paginator page), active_session, list_qs.
+{% endcomment %}
+{% regroup sessions by updated_at|date:"d M Y" as session_date_groups %}
+{% for group in session_date_groups %}
+  <div class="date-divider" data-date="{{ group.grouper }}">{{ group.grouper }}</div>
+  {% for session in group.list %}
+  {% with cs=session.conv_status %}
+  <div class="conv-row flex items-stretch border-b border-gray-100 hover:bg-gray-50 transition"
+       id="sidebar-session-{{ session.id }}">
+
+    <a href="{% url 'crm_chat_detail' session.id %}{% if list_qs %}?{{ list_qs }}{% endif %}"
+       onclick="closeConvDrawer()"
+       data-id="{{ session.id }}"
+       class="flex items-center gap-3 pl-3 py-3 flex-1 min-w-0 cursor-pointer
+              {% if active_session and session.id == active_session.id %}conv-item-active{% endif %}">
+
+      <div class="relative flex-shrink-0">
+        <div class="w-11 h-11 rounded-full bg-[#00a86b] flex items-center justify-center text-white font-bold text-lg">
+          {% if session.user_name %}{{ session.user_name|slice:":1"|upper }}
+          {% else %}<i class="fa-brands fa-whatsapp text-base"></i>{% endif %}
+        </div>
+        {% if session.is_human_takeover %}
+        <div class="absolute -bottom-0.5 -right-0.5 w-4 h-4 bg-blue-500 rounded-full border-2 border-white flex items-center justify-center" title="Human takeover">
+          <i class="fa-solid fa-user text-[6px] text-white"></i>
+        </div>
+        {% endif %}
+        {% if session.lead.source == "website" %}
+        <div class="absolute -top-1 -left-1 w-4 h-4 bg-orange-500 rounded-full border border-white flex items-center justify-center" title="Website Lead">
+          <i class="fa-solid fa-globe text-[8px] text-white"></i>
+        </div>
+        {% endif %}
+      </div>
+
+      <div class="flex-1 min-w-0">
+        <div class="flex items-center gap-1.5 min-w-0">
+          <span class="font-bold text-gray-900 text-[15px] truncate"
+                id="sidebar-name-{{ session.id }}">{{ session.user_name|default:session.phone_number|default:"Unknown" }}</span>
+          {% if session.unread_count > 0 %}
+          <span class="flex-shrink-0 min-w-[18px] h-[18px] px-1 rounded-full bg-[#00a86b] text-white text-[10px] font-bold flex items-center justify-center"
+                id="unread-badge-{{ session.id }}">{{ session.unread_count }}</span>
+          {% endif %}
+        </div>
+        <div class="text-[13px] text-gray-600 truncate mt-0.5" id="sidebar-preview-{{ session.id }}">
+          {% if session.last_message %}{{ session.last_message|truncatechars:60 }}
+          {% else %}<span class="text-gray-400 italic text-xs">No messages yet</span>{% endif %}
+        </div>
+        {% if session.last_customer_message_time %}
+        <div class="text-[10px] text-orange-600 mt-0.5 font-medium"
+             id="sidebar-countdown-{{ session.id }}"
+             data-last-msg-time="{{ session.last_customer_message_time|date:'Y-m-d H:i:s' }}">
+          <i class="fa-regular fa-clock text-[8px] mr-1"></i>
+          <span class="countdown-text">Calculating...</span>
+        </div>
+        {% endif %}
+      </div>
+
+      <div class="flex-shrink-0 flex flex-col items-end gap-1 w-[108px] pr-3">
+        <span class="text-xs text-[#00a86b] font-medium" id="sidebar-time-{{ session.id }}">{{ session.updated_at|date:"h:i A" }}</span>
+        <span class="text-[11px] text-gray-700 truncate max-w-full">
+          {% if session.assigned_sales_person %}{{ session.assigned_sales_person.get_full_name|default:session.assigned_sales_person.username }}{% else %}<span class="text-gray-400">Not Assigned</span>{% endif %}
+        </span>
+        {% if cs and cs.label %}
+        {% with ln=cs.label.name lk=cs.label.name|upper|cut:" " %}
+        <span class="conv-label-pill lbl-{{ lk }}" style="background:{{ cs.label.color|default:'#6b7280' }}"
+              id="sidebar-label-{{ session.id }}">{{ ln }}</span>
+        {% endwith %}
+        {% endif %}
+      </div>
+    </a>
+
+    {% if session.phone_number %}
+    <div class="hidden md:flex items-center px-2">
+      <a href="tel:{{ session.phone_number|slice:'-10:' }}"
+         title="Call {{ session.phone_number }}"
+         onclick="event.stopPropagation()" class="call-btn">
+        <i class="fa-solid fa-phone text-xs"></i>
+      </a>
+    </div>
+    {% endif %}
+  </div>
+  {% endwith %}
+  {% endfor %}
+{% endfor %}

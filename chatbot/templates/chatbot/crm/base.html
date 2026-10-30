@@ -1,0 +1,404 @@
+{% load static %}
+{% load tz %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <!-- resizes-content: the page shrinks above the phone keyboard instead of going under it -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content" />
+  <title>{% block title %}TrypBot CRM{% endblock %}</title>
+
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            brand:   { DEFAULT: '#25D366', dark: '#1aab52', light: '#e6f9ee' },
+            sidebar: { DEFAULT: '#0d5c38', hover: '#0a4d2f', active: '#25D366' },
+          },
+          fontFamily: {
+            sans: ['"DM Sans"', 'sans-serif'],
+          },
+        }
+      }
+    }
+  </script>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
+
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      height: 100%;
+      font-family: 'DM Sans', sans-serif;
+      overflow: hidden;
+    }
+
+    /* Safe area insets */
+    .safe-top    { padding-top:    env(safe-area-inset-top,    0px); }
+    .safe-bottom { padding-bottom: env(safe-area-inset-bottom, 0px); }
+    .safe-left   { padding-left:   env(safe-area-inset-left,   0px); }
+
+    /* Custom scrollbar */
+    ::-webkit-scrollbar { width: 4px; height: 4px; }
+    ::-webkit-scrollbar-track { background: #f1f1f1; }
+    ::-webkit-scrollbar-thumb { background: #ccc; border-radius: 4px; }
+    ::-webkit-scrollbar-thumb:hover { background: #aaa; }
+
+    /* ─── App shell ─── */
+    #app-shell {
+      display: flex;
+      height: 100vh;
+      width: 100vw;
+      overflow: hidden;
+    }
+
+    /* ─── Sidebar (left on desktop) ─── */
+    #sidebar {
+      display: flex;
+      flex-direction: column;
+      width: 68px;
+      flex-shrink: 0;
+      background: #0d5c38;
+      color: white;
+      height: 100vh;
+      z-index: 30;
+      overflow-y: auto;
+      overflow-x: hidden;
+      scrollbar-width: none;
+    }
+    #sidebar::-webkit-scrollbar { display: none; }
+
+    /* ─── Main area fills remaining space ─── */
+    #main-area {
+      flex: 1 1 0;
+      min-width: 0;
+      min-height: 0;
+      overflow-y: auto;
+      overflow-x: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* ─── Phone: no bottom bar; the same links open from a hamburger menu ─── */
+    .crm-mobile-bar, #crmNavOverlay { display: none; }
+    @media (max-width: 767px) {
+
+      #app-shell {
+        flex-direction: column;
+        /* --app-h / --app-top = the part of the screen above the keyboard
+           (set by the script at the end). Fixed, so a browser that pans the
+           page for the keyboard cannot push the message box out of view. */
+        position: fixed;
+        left: 0;
+        right: 0;
+        top: var(--app-top, 0px);
+        height: var(--app-h, 100dvh);
+        width: auto;
+        /* --kb-pad: keyboard height when the phone lays the keyboard over
+           the page without resizing it (installed app / WebView) */
+        padding-bottom: var(--kb-pad, 0px);
+        box-sizing: border-box;
+      }
+
+      #sidebar {
+        position: fixed;
+        top: 0; left: 0; bottom: 0;
+        width: 270px;
+        height: 100dvh;
+        z-index: 90;
+        transform: translateX(-100%);
+        transition: transform .25s cubic-bezier(.4,0,.2,1);
+        padding-top: env(safe-area-inset-top, 0px);
+      }
+      body.crm-nav-open #sidebar { transform: translateX(0); box-shadow: 0 0 40px rgba(0,0,0,.35); }
+      body.crm-nav-open #crmNavOverlay {
+        display: block; position: fixed; inset: 0; z-index: 85; background: rgba(0,0,0,.45);
+      }
+
+      #sidebar .logo-wrap { justify-content: flex-start; gap: 10px; padding: 0 18px; height: 64px; }
+      #sidebar .logo-wrap::after { content: "TrypBot CRM"; font-weight: 700; font-size: 17px; }
+
+      #sidebar nav { align-items: stretch; padding: 8px 0; gap: 0; }
+      #sidebar .sidebar-bottom { align-items: stretch; }
+
+      .sidebar-link {
+        flex-direction: row !important;
+        justify-content: flex-start;
+        gap: 16px !important;
+        padding: 13px 22px !important;
+      }
+      .sidebar-link i { font-size: 18px; width: 22px; text-align: center; }
+      .sidebar-link span { font-size: 15px !important; opacity: 1 !important; line-height: 1.2; }
+
+      /* Pages without their own app bar get a slim one with the hamburger */
+      .crm-mobile-bar {
+        display: flex; align-items: center; gap: 14px; flex-shrink: 0;
+        background: #00a86b; color: #fff; padding: 12px 16px;
+        padding-top: calc(12px + env(safe-area-inset-top, 0px));
+      }
+
+      #main-area {
+        flex: 1;
+        min-height: 0;
+        overflow: hidden;
+      }
+    }
+
+    /* Label colour palette (used across templates) */
+    .lbl-HOT           { background: #ff6b6b22; color: #e53935; border: 1px solid #e5393540; }
+    .lbl-PAID          { background: #43a04722; color: #2e7d32; border: 1px solid #2e7d3240; }
+    .lbl-CANCEL        { background: #f4433622; color: #c62828; border: 1px solid #c6282840; }
+    .lbl-PENDING       { background: #fb8c0022; color: #e65100; border: 1px solid #e6510040; }
+    .lbl-FOLLOW_UP     { background: #1565c022; color: #1565c0; border: 1px solid #1565c040; }
+    .lbl-TODAY         { background: #6a1b9a22; color: #6a1b9a; border: 1px solid #6a1b9a40; }
+    .lbl-THIS_WEEK     { background: #00838f22; color: #00695c; border: 1px solid #00695c40; }
+    .lbl-ON_PAYMENT    { background: #f9a82522; color: #e65100; border: 1px solid #e6510040; }
+    .lbl-HIGH_VALUE    { background: #1a237e22; color: #1a237e; border: 1px solid #1a237e40; }
+    .lbl-RECONFIRM     { background: #880e4f22; color: #880e4f; border: 1px solid #880e4f40; }
+    .lbl-NOT_CONTACTED { background: #37474f22; color: #37474f; border: 1px solid #37474f40; }
+    .lbl-FUTURE        { background: #0d47a122; color: #0d47a1; border: 1px solid #0d47a140; }
+    .lbl-OLD           { background: #78909c22; color: #546e7a; border: 1px solid #546e7a40; }
+    .lbl-CHARDHAM      { background: #bf360c22; color: #bf360c; border: 1px solid #bf360c40; }
+    .lbl-default       { background: #9e9e9e22; color: #616161; border: 1px solid #61616140; }
+  </style>
+
+  {% block extra_head %}{% endblock %}
+</head>
+
+<body class="bg-gray-100 text-gray-800">
+
+{% if user.is_authenticated %}
+
+<div id="app-shell">
+
+  <!-- ═══ SIDEBAR ═══ -->
+  <aside id="sidebar">
+
+    <!-- Logo (desktop only) -->
+    <div class="flex items-center justify-center h-14 border-b border-white/10 logo-wrap flex-shrink-0">
+      <div class="w-9 h-9 rounded-lg bg-white flex items-center justify-center">
+        <span class="text-[#0d5c38] font-bold text-base leading-none">T</span>
+      </div>
+    </div>
+
+    <!-- Nav links -->
+    <nav class="flex flex-col items-center gap-1 py-3 flex-1">
+
+      <!-- Chats -->
+      <a href="{% url 'crm_chat_home' %}"
+         title="Chats"
+         class="sidebar-link flex flex-col items-center gap-0.5 w-full py-2.5 px-1 hover:bg-white/10 transition-colors
+                {% if request.resolver_match.url_name == 'crm_chat_home' or request.resolver_match.url_name == 'crm_chat_detail' %}bg-white/15{% endif %}">
+        <i class="fa-solid fa-comments text-lg"></i>
+        <span class="text-[9px] leading-none opacity-80">Chats</span>
+      </a>
+      <!-- Lead Analysis: admin sees all, team leader their team, sales person their own -->
+      <a href="{% url 'crm_lead_analysis' %}"
+         title="Lead Analysis"
+         class="sidebar-link flex flex-col items-center gap-0.5 w-full py-2.5 px-1 hover:bg-white/10 transition-colors
+                {% if request.resolver_match.url_name == 'crm_lead_analysis' %}bg-white/15{% endif %}">
+        <i class="fa-solid fa-chart-pie text-lg"></i>
+        <span class="text-[9px] leading-none opacity-80">Analysis</span>
+      </a>
+      <!-- Reminders -->
+      <a href="{% url 'crm_all_reminders' %}"
+        title="Reminders"
+        class="sidebar-link flex flex-col items-center gap-0.5 w-full py-2.5 px-1 hover:bg-white/10 transition-colors
+                {% if request.resolver_match.url_name == 'crm_all_reminders' %}bg-white/15{% endif %}">
+          <i class="fa-solid fa-bell text-lg"></i>
+          <span class="text-[9px] leading-none opacity-80">Reminder</span>
+      </a>
+
+      <!-- Contacts -->
+      <a href="{% url 'crm_contacts' %}"
+         title="Contacts"
+         class="sidebar-link flex flex-col items-center gap-0.5 w-full py-2.5 px-1 hover:bg-white/10 transition-colors
+                {% if request.resolver_match.url_name == 'crm_contacts' %}bg-white/15{% endif %}">
+        <i class="fa-solid fa-address-book text-lg"></i>
+        <span class="text-[9px] leading-none opacity-80">Contacts</span>
+      </a>
+
+      <!-- Campaigns -->
+      <a href="{% url 'crm_campaign_list' %}"
+         title="Campaigns"
+         class="sidebar-link flex flex-col items-center gap-0.5 w-full py-2.5 px-1 hover:bg-white/10 transition-colors
+                {% if 'campaign' in request.resolver_match.url_name or request.resolver_match.url_name == 'crm_audience' %}bg-white/15{% endif %}">
+        <i class="fa-solid fa-bullhorn text-lg"></i>
+        <span class="text-[9px] leading-none opacity-80">Campaigns</span>
+      </a>
+
+      <!-- Templates -->
+      <a href="{% url 'crm_templates' %}"
+         title="Templates"
+         class="sidebar-link flex flex-col items-center gap-0.5 w-full py-2.5 px-1 hover:bg-white/10 transition-colors
+                {% if request.resolver_match.url_name == 'crm_templates' %}bg-white/15{% endif %}">
+        <i class="fa-solid fa-file-lines text-lg"></i>
+        <span class="text-[9px] leading-none opacity-80">Templates</span>
+      </a>
+
+      <!-- Itinerary -->
+      <a href="{% url 'crm_create_itinerary' %}"
+         title="Itinerary"
+         class="sidebar-link flex flex-col items-center gap-0.5 w-full py-2.5 px-1 hover:bg-white/10 transition-colors
+                {% if request.resolver_match.url_name == 'crm_create_itinerary' %}bg-white/15{% endif %}">
+        <i class="fa-solid fa-route text-lg"></i>
+        <span class="text-[9px] leading-none opacity-80">Itinerary</span>
+      </a>
+
+      <!-- Settings -->
+      <a href="/admin/" target="_blank" title="Settings"
+         class="sidebar-link flex flex-col items-center gap-0.5 w-full py-2.5 px-1 hover:bg-white/10 transition-colors">
+        <i class="fa-solid fa-gear text-lg"></i>
+        <span class="text-[9px] leading-none opacity-80">Settings</span>
+      </a>
+
+    </nav>
+
+    <!-- Bottom: profile / logout (desktop only) -->
+    <div class="sidebar-bottom flex flex-col items-center gap-1 pb-3 border-t border-white/10 pt-2">
+      <button type="button" onclick="hardRefresh(this.firstElementChild)" title="Hard refresh"
+         class="sidebar-link flex flex-col items-center gap-0.5 w-full py-2 px-1 hover:bg-white/10 transition-colors">
+        <i class="fa-solid fa-rotate-right text-lg"></i>
+        <span class="text-[9px] leading-none opacity-80">Refresh</span>
+      </button>
+      <a href="{% url 'crm_logout' %}" title="Logout"
+         class="flex flex-col items-center gap-0.5 w-full py-2 px-1 hover:bg-white/10 transition-colors">
+        <div class="w-7 h-7 rounded-full bg-white/20 flex items-center justify-center text-xs font-bold">
+          {{ user.username|first|upper }}
+        </div>
+        <span class="text-[9px] leading-none opacity-80">Logout</span>
+      </a>
+    </div>
+
+  </aside>
+  <!-- ═══ END SIDEBAR ═══ -->
+
+  <div id="crmNavOverlay" onclick="toggleCrmNav(false)"></div>
+
+  <!-- MAIN AREA — fills all remaining space -->
+  <div id="main-area">
+    {% block mobile_bar %}
+    <div class="crm-mobile-bar">
+      <button type="button" onclick="toggleCrmNav(true)" aria-label="Menu" class="p-1">
+        <i class="fa-solid fa-bars text-xl"></i>
+      </button>
+      <span class="text-lg font-bold truncate flex-1">{% block mobile_title %}TrypBot CRM{% endblock %}</span>
+      <button type="button" onclick="hardRefresh(this.firstElementChild)" aria-label="Hard refresh" title="Hard refresh" class="p-1">
+        <i class="fa-solid fa-rotate-right text-lg"></i>
+      </button>
+    </div>
+    {% endblock %}
+    {% block content %}{% endblock %}
+  </div>
+
+</div>
+
+{% else %}
+  {% block auth_content %}{% endblock %}
+{% endif %}
+
+<script>
+  // Phone menu (the desktop side bar, slid in from the left).
+  function toggleCrmNav(open) {
+    document.body.classList.toggle('crm-nav-open', open === undefined ? !document.body.classList.contains('crm-nav-open') : open);
+  }
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') toggleCrmNav(false); });
+
+  // Hard refresh (top bar button): drop any service worker and cached files,
+  // then load the page fresh. For the CRM added to the home screen as an app,
+  // where there is no browser reload button.
+  async function hardRefresh(btn) {
+    if (btn) btn.classList.add('fa-spin');
+    try {
+      if ('serviceWorker' in navigator) {
+        for (const reg of await navigator.serviceWorker.getRegistrations()) await reg.unregister();
+      }
+      if (window.caches) {
+        for (const key of await caches.keys()) await caches.delete(key);
+      }
+    } catch (e) { /* still reload below */ }
+    const url = new URL(location.href);
+    url.searchParams.set('_r', Date.now());
+    location.replace(url.toString());
+  }
+  // Drop the cache-buster from the address bar after the fresh load.
+  (function () {
+    const url = new URL(location.href);
+    if (url.searchParams.has('_r')) {
+      url.searchParams.delete('_r');
+      history.replaceState(null, '', url.pathname + url.search + url.hash);
+    }
+  })();
+
+  // Phones whose browser does not shrink the page for the keyboard (older
+  // Chrome, Samsung Internet, app WebViews): size the app to the visible
+  // part of the screen so the message box and send button stay above it.
+  (function () {
+    const vv = window.visualViewport;
+    if (!vv) return;
+    const root = document.documentElement.style;
+    let tallest = vv.height;
+    const fit = () => {
+      if (window.innerWidth >= 768) { root.removeProperty('--app-h'); root.removeProperty('--app-top'); return; }
+      tallest = Math.max(tallest, vv.height);
+      // The screen really shrank for the keyboard: the guessed lift below is not needed.
+      if (vv.height < tallest - 80 && !window.__kbExact) root.removeProperty('--kb-pad');
+      root.setProperty('--app-h', `${Math.round(vv.height)}px`);
+      root.setProperty('--app-top', `${Math.round(vv.offsetTop)}px`);
+    };
+    vv.addEventListener('resize', fit);
+    vv.addEventListener('scroll', fit);
+    fit();
+  })();
+
+  // Keyboard laid OVER the page (installed app / WebView, some phone
+  // browsers): nothing above notices, so lift the app by the keyboard's
+  // height. Exact height from the VirtualKeyboard API where the phone has
+  // it; otherwise, when typing starts and the screen did not shrink, assume
+  // a keyboard of ~42% of the screen until the field loses focus.
+  (function () {
+    const root = document.documentElement.style;
+    const phone = () => window.innerWidth < 768;
+    const typing = (el) => el && (el.tagName === 'TEXTAREA' ||
+      (el.tagName === 'INPUT' && !['checkbox', 'radio', 'file', 'date', 'button', 'submit', 'hidden'].includes(el.type)));
+    let exact = false;
+
+    const vk = navigator.virtualKeyboard;
+    if (vk && 'overlaysContent' in vk) {
+      vk.overlaysContent = true;   // we place the content ourselves
+      vk.addEventListener('geometrychange', () => {
+        const h = Math.round(vk.boundingRect.height || 0);
+        exact = window.__kbExact = h > 0;
+        if (h > 0 && phone()) root.setProperty('--kb-pad', `${h}px`);
+        else root.removeProperty('--kb-pad');
+      });
+    }
+
+    document.addEventListener('focusin', (e) => {
+      if (!phone() || !typing(e.target)) return;
+      const h0 = window.visualViewport ? window.visualViewport.height : window.innerHeight;
+      setTimeout(() => {
+        if (exact || document.activeElement !== e.target) return;
+        const h1 = window.visualViewport ? window.visualViewport.height : window.innerHeight;
+        if (h0 - h1 < 80) root.setProperty('--kb-pad', `${Math.round(h1 * 0.42)}px`);
+        if (e.target.id === 'msgInput') {
+          const m = document.getElementById('chatMessages');
+          if (m) m.scrollTop = m.scrollHeight;
+        }
+      }, 650);
+    });
+    document.addEventListener('focusout', () => {
+      setTimeout(() => {
+        if (!typing(document.activeElement) && !exact) root.removeProperty('--kb-pad');
+      }, 100);
+    });
+  })();
+</script>
+{% block extra_scripts %}{% endblock %}
+</body>
+</html>

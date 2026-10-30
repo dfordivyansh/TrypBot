@@ -1,0 +1,99 @@
+{% extends "chatbot/crm/base.html" %}
+{% load static %}
+
+{% block title %}Notes And Reminder — TrypBot CRM{% endblock %}
+
+{% block mobile_bar %}{% endblock %}
+
+{% block extra_head %}
+<style>
+.rem-page { display: flex; flex-direction: column; height: 100%; background: #fff; }
+.rem-head { background: #00a86b; color: #fff; flex-shrink: 0; padding-top: env(safe-area-inset-top, 0px); }
+.rem-tabs { display: flex; gap: 6px; padding: 0 6px 6px; }
+.rem-tab {
+  flex: 1; text-align: center; padding: 13px 8px; border-radius: 6px 6px 0 0;
+  font-weight: 700; font-size: 15px; color: #fff; text-decoration: none;
+}
+.rem-tab.active { background: #fff; color: #00a86b; border-radius: 6px; }
+.rem-list { flex: 1 1 0; min-height: 0; overflow-y: auto; }
+.rem-row { display: flex; align-items: center; gap: 14px; padding: 12px 14px 12px 18px; border-bottom: 2px solid #e5e7eb; }
+.rem-row input[type=checkbox] { width: 22px; height: 22px; accent-color: #00a86b; flex-shrink: 0; }
+.rem-note { font-weight: 700; font-size: 17px; color: #111827; word-break: break-word; }
+.rem-who { font-size: 14px; color: #4b5563; margin-top: 2px; }
+.rem-time { font-size: 12px; color: #9ca3af; margin-top: 2px; }
+.rem-time.overdue { color: #dc2626; }
+.rem-actions { display: flex; flex-direction: column; gap: 10px; align-items: center; flex-shrink: 0; }
+.rem-actions a, .rem-actions button { font-size: 19px; line-height: 1; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="rem-page">
+  <div class="rem-head">
+    <div class="flex items-center gap-5 px-4 py-4">
+      <a href="{% url 'crm_chat_home' %}" aria-label="Back"><i class="fa-solid fa-arrow-left text-xl"></i></a>
+      <span class="text-xl font-bold">Notes And Reminder</span>
+    </div>
+    <div class="rem-tabs">
+      <a href="?tab=pending" class="rem-tab {% if tab == 'pending' %}active{% endif %}">Pending{% if pending_count %} ({{ pending_count }}){% endif %}</a>
+      <a href="?tab=completed" class="rem-tab {% if tab == 'completed' %}active{% endif %}">Completed{% if completed_count %} ({{ completed_count }}){% endif %}</a>
+    </div>
+  </div>
+
+  <div class="rem-list" id="remList">
+    {% for r in reminders %}
+    <div class="rem-row" id="rem-{{ r.id }}">
+      <input type="checkbox" {% if r.done %}checked{% endif %} onchange="setDone({{ r.id }}, this.checked)"
+             aria-label="{% if r.done %}Mark as pending{% else %}Mark as done{% endif %}">
+      <div class="flex-1 min-w-0">
+        <div class="rem-note">{{ r.note }}</div>
+        <div class="rem-who">{{ r.session.user_name|default:"Unknown" }}{% if r.session.phone_number %} ({{ r.session.phone_number }}){% endif %}</div>
+        <div class="rem-time {% if not r.done and r.reminder_at|date:"Y-m-d" < today_str %}overdue{% endif %}">{{ r.reminder_at|date:"m/d/Y" }}</div>
+      </div>
+      <div class="rem-actions">
+        <a href="{% url 'crm_chat_detail' r.session_id %}" class="text-[#00a86b]" title="Open chat"><i class="fa-regular fa-message"></i></a>
+        <button type="button" onclick="deleteReminder({{ r.id }})" class="text-red-500" title="Delete"><i class="fa-regular fa-trash-can"></i></button>
+      </div>
+    </div>
+    {% empty %}
+    <div class="flex flex-col items-center justify-center py-20 text-gray-400">
+      <i class="fa-regular fa-bell-slash text-3xl mb-2"></i>
+      <p class="text-sm">{% if tab == 'completed' %}No completed reminders.{% else %}No pending reminders.{% endif %}</p>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+const CSRF = '{{ csrf_token }}';
+const urlFor = (name, id) => name.replace('/0/', `/${id}/`);
+
+// Ticking moves the reminder to the other tab.
+function setDone(id, done) {
+  fetch(urlFor("{% url 'crm_reminder_done' 0 %}", id), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF },
+    body: JSON.stringify({ done }),
+  })
+    .then(r => r.json())
+    .then(d => {
+      if (!d.success) throw new Error(d.error || 'failed');
+      const row = document.getElementById(`rem-${id}`);
+      row.style.transition = 'opacity .25s';
+      row.style.opacity = '0';
+      setTimeout(() => row.remove(), 250);
+    })
+    .catch(() => { alert('Could not update the reminder.'); location.reload(); });
+}
+
+function deleteReminder(id) {
+  if (!confirm('Delete this reminder?')) return;
+  fetch(urlFor("{% url 'crm_reminder_delete' 0 %}", id), { method: 'POST', headers: { 'X-CSRFToken': CSRF } })
+    .then(r => r.json())
+    .then(d => { if (d.success) document.getElementById(`rem-${id}`).remove(); })
+    .catch(() => alert('Could not delete the reminder.'));
+}
+</script>
+{% endblock %}

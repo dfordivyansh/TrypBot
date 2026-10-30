@@ -1,0 +1,759 @@
+{% extends "chatbot/crm/base.html" %}
+{% block title %}New Campaign | TrypBot CRM{% endblock %}
+
+{% block extra_head %}
+<style>
+  .wa-bg { background-color:#efeae2; background-image:radial-gradient(rgba(0,0,0,.035) 1px, transparent 1px); background-size:14px 14px; }
+  .wa-bubble { background:#fff; border-radius:.2rem .75rem .75rem .75rem; box-shadow:0 1px 1px rgba(0,0,0,.13); }
+  .wa-var { background:#dcfce7; color:#166534; border-radius:.25rem; padding:0 .2rem; font-weight:600; }
+  .wa-var.miss { background:#fee2e2; color:#991b1b; }
+  .step-dot { width:2rem; height:2rem; border-radius:9999px; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:.85rem; flex-shrink:0; }
+  .step-on   { background:#25D366; color:#fff; }
+  .step-done { background:#0d5c38; color:#fff; }
+  .step-off  { background:#e5e7eb; color:#6b7280; }
+  .opt-card { border:1.5px solid #e5e7eb; border-radius:.85rem; padding:.85rem; cursor:pointer; transition:border-color .15s, background .15s; background:#fff; text-align:left; }
+  .opt-card:hover { border-color:#86efac; }
+  .opt-card.sel { border-color:#25D366; background:#f0fdf4; }
+  .chip-btn { display:inline-flex; align-items:center; gap:.3rem; padding:.2rem .65rem; border-radius:9999px; font-size:.78rem; font-weight:600;
+              border:1.5px solid #d1d5db; color:#4b5563; background:#fff; cursor:pointer; transition:all .12s; }
+  .chip-btn:hover { border-color:#9ca3af; }
+  .drop { border:2px dashed #cbd5e1; border-radius:1rem; padding:2rem 1rem; text-align:center; cursor:pointer; background:#f8fafc; transition:all .15s; }
+  .drop:hover, .drop.over { border-color:#25D366; background:#f0fdf4; }
+</style>
+{% endblock %}
+
+{% block content %}
+{% include "chatbot/crm/campaigns/_common.html" %}
+{{ wizard_data|json_script:"wizard-data" }}
+
+<div class="flex flex-col h-full overflow-hidden">
+
+  <!-- Header + stepper -->
+  <div class="bg-white border-b border-gray-200 px-4 md:px-6 py-3">
+    <div class="flex items-center justify-between gap-3">
+      <div class="flex items-center gap-3 min-w-0">
+        <a href="{% url 'crm_campaign_list' %}" class="text-gray-400 hover:text-gray-700" title="Back to campaigns"><i class="fa-solid fa-arrow-left"></i></a>
+        <h1 class="text-lg md:text-xl font-bold text-gray-800 truncate">New Campaign</h1>
+      </div>
+    </div>
+    <ol id="stepper" class="flex items-center gap-2 md:gap-3 mt-3 overflow-x-auto"></ol>
+  </div>
+
+  <!-- Body -->
+  <div class="flex-1 overflow-y-auto bg-gray-100">
+    <div class="max-w-6xl mx-auto p-4 md:p-6 grid lg:grid-cols-[minmax(0,1fr)_340px] gap-6">
+
+      <main class="min-w-0">
+        <div id="step-body"></div>
+        <div id="step-error" class="hidden mt-4 bg-red-50 border border-red-200 text-red-700 text-sm rounded-xl px-4 py-3"></div>
+      </main>
+
+      <!-- Live preview -->
+      <aside class="lg:sticky lg:top-0 self-start">
+        <div class="card overflow-hidden">
+          <div class="px-4 py-2.5 border-b border-gray-100 flex items-center justify-between">
+            <span class="text-sm font-semibold text-gray-700"><i class="fa-brands fa-whatsapp text-brand-dark"></i> Message preview</span>
+            <span id="pv-who" class="text-[11px] text-gray-400"></span>
+          </div>
+          <div class="wa-bg p-4 min-h-[220px]">
+            <div id="pv-bubble"></div>
+          </div>
+          <div id="pv-meta" class="px-4 py-2 text-[11px] text-gray-400 border-t border-gray-100"></div>
+        </div>
+      </aside>
+    </div>
+  </div>
+
+  <!-- Footer nav -->
+  <div class="bg-white border-t border-gray-200 px-4 md:px-6 py-3">
+    <div class="max-w-6xl mx-auto flex items-center justify-between gap-3">
+      <button id="btn-back" class="btn btn-outline"><i class="fa-solid fa-arrow-left"></i> Back</button>
+      <div id="foot-info" class="text-xs text-gray-500 hidden md:block"></div>
+      <button id="btn-next" class="btn btn-primary">Continue <i class="fa-solid fa-arrow-right"></i></button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+{% verbatim %}
+<script>
+(function () {
+  const D = JSON.parse(document.getElementById('wizard-data').textContent);
+  const SEND_RATE = 5; // messages / second (used only for the time estimate)
+  const STEPS = ['Template', 'Audience', 'Variables', 'Review & send'];
+  const VAR_RE = /\{\{\s*(\d+)\s*\}\}/g;
+
+  const emptyFilters = () => ({ q: '', tags: [], tag_mode: 'any', exclude_tags: [], labels: [], assigned_to: [],
+                                created_from: '', created_to: '', destination: '', activity: '' });
+
+  const S = {
+    step: 1, name: '', tplId: null,
+    header: { type: '', url: '', filename: '' },
+    aud: { type: 'filters', filters: emptyFilters(), segmentId: '', ids: new Set(), csv: null,
+           csvTags: [], createContacts: true, pickPage: 1 },
+    mapping: {}, previewIdx: 0,
+    schedule: { mode: 'now', at: '' }, consent: false,
+    counts: null, countsLoading: false, submitting: false,
+  };
+
+  const $ = (sel, root) => (root || document).querySelector(sel);
+  const $$ = (sel, root) => [...(root || document).querySelectorAll(sel)];
+  const tpl = () => D.templates.find(t => t.id === S.tplId) || null;
+  const fmtDur = s => s < 60 ? 'under a minute' : s < 3600 ? '~' + Math.ceil(s / 60) + ' min' : '~' + (s / 3600).toFixed(1) + ' hours';
+
+  /* ─────────────── Preview ─────────────── */
+
+  function sampleList() {
+    const a = S.aud;
+    if (a.type === 'csv' && a.csv) return a.csv.rows.slice(0, 5);
+    if (S.counts && S.counts.sample && S.counts.sample.length) return S.counts.sample;
+    return [];
+  }
+  function sampleCtx() {
+    const list = sampleList();
+    const r = list[Math.min(S.previewIdx, list.length - 1)];
+    if (!r) return { ctx: { name: 'Rahul Sharma', phone: '919876543210', destination: 'Goa', email: '', extra: {} }, real: false };
+    return { ctx: { name: r.name || '', phone: r.phone || '', destination: r.destination || '', email: r.email || '', extra: r.extra || {} }, real: true };
+  }
+  function computeVar(spec, ctx) {
+    let v = '';
+    switch (spec.source) {
+      case 'name': v = ctx.name; break;
+      case 'first_name': v = (ctx.name || '').trim().split(/\s+/)[0] || ''; break;
+      case 'phone': v = ctx.phone; break;
+      case 'destination': v = ctx.destination; break;
+      case 'email': v = ctx.email; break;
+      case 'column': v = (ctx.extra || {})[spec.value] || ''; break;
+      case 'fixed': v = spec.value || ''; break;
+    }
+    v = String(v || '').replace(/[\r\n\t]+/g, ' ').trim();
+    if (!v) v = (spec.fallback || '').trim() || (D.fallbacks[spec.source] || '-');
+    return v;
+  }
+
+  function renderPreview() {
+    const t = tpl();
+    const bubble = $('#pv-bubble');
+    if (!t) {
+      bubble.innerHTML = '<div class="text-center text-xs text-gray-500 mt-16">Choose a template to see how your message will look.</div>';
+      $('#pv-meta').textContent = ''; $('#pv-who').textContent = '';
+      return;
+    }
+    const { ctx, real } = sampleCtx();
+    let html = esc(t.text)
+      .replace(/\*([^*\n]+)\*/g, '<b>$1</b>')
+      .replace(/(^|[\s(])_([^_\n]+)_(?=$|[\s.,!?)])/g, '$1<i>$2</i>');
+    html = html.replace(VAR_RE, (m, n) => {
+      const spec = S.mapping[n];
+      if (!spec) return '<span class="wa-var miss">{{' + n + '}}</span>';
+      if (spec.source === 'column' && !spec.value) return '<span class="wa-var miss">{{' + n + '}}</span>';
+      if (spec.source === 'fixed' && !spec.value) return '<span class="wa-var miss">{{' + n + '}}</span>';
+      return '<span class="wa-var">' + esc(computeVar(spec, ctx)) + '</span>';
+    });
+
+    let head = '';
+    if (S.header.type === 'image') {
+      head = S.header.url ? '<img src="' + esc(S.header.url) + '" class="rounded-lg w-full max-h-40 object-cover mb-2" onerror="this.style.display=\'none\'">'
+                          : '<div class="rounded-lg bg-gray-100 h-24 flex items-center justify-center text-gray-400 mb-2"><i class="fa-regular fa-image text-2xl"></i></div>';
+    } else if (S.header.type === 'video') {
+      head = '<div class="rounded-lg bg-slate-800 h-24 flex items-center justify-center text-white/80 mb-2"><i class="fa-solid fa-circle-play text-3xl"></i></div>';
+    } else if (S.header.type === 'document') {
+      head = '<div class="rounded-lg bg-gray-100 px-3 py-2 flex items-center gap-2 text-xs text-gray-600 mb-2"><i class="fa-solid fa-file-pdf text-red-500 text-lg"></i><span class="truncate">' + esc(S.header.filename || 'document') + '</span></div>';
+    }
+    bubble.innerHTML = '<div class="wa-bubble p-2 max-w-[92%]">' + head +
+      '<div class="text-[13px] leading-snug text-gray-800 whitespace-pre-wrap break-words px-1">' + html + '</div>' +
+      '<div class="text-[10px] text-gray-400 text-right px-1 mt-1">10:30 am</div></div>';
+    $('#pv-meta').textContent = 'Template: ' + (t.name || '—') + ' · ' + t.language;
+    $('#pv-who').textContent = t.placeholders.length ? (real ? 'Sample: ' + (ctx.name || ctx.phone) : 'Sample data') : '';
+  }
+
+  /* ─────────────── Stepper / navigation ─────────────── */
+
+  function renderStepper() {
+    $('#stepper').innerHTML = STEPS.map((label, i) => {
+      const n = i + 1, cls = n === S.step ? 'step-on' : n < S.step ? 'step-done' : 'step-off';
+      return '<li class="flex items-center gap-2 shrink-0' + (n > S.step ? ' opacity-70' : '') + '">' +
+        '<span class="step-dot ' + cls + '">' + (n < S.step ? '<i class="fa-solid fa-check text-xs"></i>' : n) + '</span>' +
+        '<span class="text-sm font-medium ' + (n === S.step ? 'text-gray-800' : 'text-gray-500 hidden sm:inline') + '">' + label + '</span>' +
+        (n < STEPS.length ? '<span class="w-4 md:w-8 h-px bg-gray-300 hidden sm:block"></span>' : '') + '</li>';
+    }).join('');
+  }
+
+  function showError(msg) {
+    const el = $('#step-error');
+    if (!msg) { el.classList.add('hidden'); return; }
+    el.textContent = msg; el.classList.remove('hidden');
+    el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+
+  function validate(step) {
+    const t = tpl();
+    if (step >= 1) {
+      if (!S.name.trim()) return 'Please give your campaign a name.';
+      if (!t) return 'Please choose a template.';
+      if (!t.ready) return 'This template has no WhatsApp template name yet.';
+      if (S.header.type && !/^https:\/\//i.test(S.header.url.trim())) return 'Header media needs a public https:// link (or upload an image).';
+    }
+    if (step >= 2) {
+      const a = S.aud, c = S.counts;
+      if (a.type === 'segment' && !a.segmentId) return 'Please choose a segment.';
+      if (a.type === 'contacts' && !a.ids.size) return 'Select at least one contact.';
+      if (a.type === 'csv' && !(a.csv && a.csv.rows.length)) return 'Upload a file with at least one valid phone number.';
+      if (S.countsLoading || !c) return 'Still counting contacts — one moment.';
+      if (c.eligible <= 0) return c.total > 0 ? 'Every contact in this audience has opted out.' : 'No contacts match this audience.';
+    }
+    if (step >= 3 && t) {
+      for (const n of t.placeholders) {
+        const m = S.mapping[n];
+        if (!m) return 'Variable {{' + n + '}} needs a value.';
+        if (m.source === 'fixed' && !String(m.value || '').trim()) return 'Enter the text for variable {{' + n + '}}.';
+        if (m.source === 'column') {
+          if (!m.value) return 'Choose a CSV column for variable {{' + n + '}}.';
+          if (!(S.aud.csv && S.aud.csv.columns.includes(m.value))) return 'Column “' + m.value + '” is not in the uploaded file.';
+        }
+      }
+    }
+    if (step >= 4) {
+      if (S.schedule.mode === 'later') {
+        const d = new Date(S.schedule.at);
+        if (!S.schedule.at || isNaN(d)) return 'Choose a date and time to send.';
+        if (d.getTime() < Date.now() + 60000) return 'The scheduled time must be in the future.';
+      }
+      if (S.schedule.mode !== 'draft' && !S.consent) return 'Please confirm the opt-in statement to continue.';
+    }
+    return null;
+  }
+
+  function go(step) {
+    S.step = step; showError('');
+    renderStepper();
+    [null, mountStep1, mountStep2, mountStep3, mountStep4][step]();
+    updateFooter();
+    renderPreview();
+    $('#step-body').scrollIntoView({ block: 'start' });
+  }
+
+  function updateFooter() {
+    $('#btn-back').style.visibility = S.step === 1 ? 'hidden' : 'visible';
+    const next = $('#btn-next');
+    if (S.step < 4) { next.innerHTML = 'Continue <i class="fa-solid fa-arrow-right"></i>'; }
+    else {
+      const n = S.counts ? S.counts.eligible : 0;
+      next.innerHTML = S.schedule.mode === 'draft' ? '<i class="fa-regular fa-floppy-disk"></i> Save draft'
+        : S.schedule.mode === 'later' ? '<i class="fa-regular fa-clock"></i> Schedule campaign'
+        : '<i class="fa-solid fa-paper-plane"></i> Send to ' + fmtNum(n) + ' contacts';
+    }
+    next.disabled = S.submitting;
+    const info = $('#foot-info');
+    info.textContent = S.step >= 2 && S.counts ? fmtNum(S.counts.eligible) + ' contacts will receive this message' : '';
+  }
+
+  $('#btn-back').onclick = () => { if (S.step > 1) go(S.step - 1); };
+  $('#btn-next').onclick = () => {
+    const err = validate(S.step);
+    if (err) { showError(err); return; }
+    showError('');
+    if (S.step < 4) go(S.step + 1); else submit();
+  };
+
+  /* ─────────────── Step 1 — template ─────────────── */
+
+  function mountStep1() {
+    $('#step-body').innerHTML =
+      '<div class="card p-5 space-y-6">' +
+        '<div><label class="block text-sm font-semibold text-gray-700 mb-1.5">Campaign name</label>' +
+          '<input id="f-name" class="fld" maxlength="255" placeholder="e.g. Char Dham early-bird offer" value="' + esc(S.name) + '">' +
+          '<p class="text-xs text-gray-400 mt-1">Only visible to your team.</p></div>' +
+        '<div><div class="flex items-center justify-between mb-2"><label class="text-sm font-semibold text-gray-700">Message template</label>' +
+          '<a href="' + D.urls.templates + '" target="_blank" class="text-xs text-brand-dark hover:underline">Manage templates <i class="fa-solid fa-arrow-up-right-from-square"></i></a></div>' +
+          '<input id="f-tsearch" class="fld mb-2" placeholder="Search templates…">' +
+          '<div id="tpl-list" class="grid gap-2 max-h-80 overflow-y-auto pr-1"></div></div>' +
+        '<div class="border-t border-gray-100 pt-5"><div class="flex items-center justify-between">' +
+          '<div><p class="text-sm font-semibold text-gray-700">Header media <span class="font-normal text-gray-400">(optional)</span></p>' +
+          '<p class="text-xs text-gray-400">Only if your approved template has an image, video or document header.</p></div>' +
+          '<select id="f-htype" class="fld !w-auto"><option value="">None</option><option value="image">Image</option><option value="video">Video</option><option value="document">Document</option></select></div>' +
+          '<div id="hdr-fields" class="mt-3 space-y-2"></div></div>' +
+      '</div>';
+
+    $('#f-name').oninput = e => { S.name = e.target.value; };
+    $('#f-tsearch').oninput = e => renderTplList(e.target.value);
+    $('#f-htype').value = S.header.type;
+    $('#f-htype').onchange = e => { S.header.type = e.target.value; if (!S.header.type) { S.header.url = ''; S.header.filename = ''; } renderHeaderFields(); renderPreview(); };
+    renderTplList('');
+    renderHeaderFields();
+  }
+
+  function renderTplList(q) {
+    q = (q || '').toLowerCase();
+    const list = D.templates.filter(t => !q || t.title.toLowerCase().includes(q) || (t.name || '').toLowerCase().includes(q) || t.text.toLowerCase().includes(q));
+    const box = $('#tpl-list');
+    if (!D.templates.length) {
+      box.innerHTML = '<div class="border border-dashed border-gray-300 rounded-xl p-6 text-center text-sm text-gray-500">No templates yet.<br>Add one under <b>CRM Templates</b> in the admin panel, using the exact name approved by Meta.<br>' +
+        '<a class="text-brand-dark font-medium hover:underline" target="_blank" href="/admin/chatbot/crmtemplate/add/">Add a template →</a></div>';
+      return;
+    }
+    if (!list.length) { box.innerHTML = '<p class="text-sm text-gray-400 p-3">No templates match your search.</p>'; return; }
+    box.innerHTML = list.map(t =>
+      '<button type="button" data-id="' + t.id + '" class="opt-card ' + (t.id === S.tplId ? 'sel' : '') + '" ' + (t.ready ? '' : 'style="opacity:.6"') + '>' +
+        '<div class="flex items-start justify-between gap-2"><div class="min-w-0">' +
+          '<p class="font-semibold text-sm text-gray-800 truncate">' + esc(t.title) + '</p>' +
+          '<p class="text-[11px] font-mono text-gray-400">' + esc(t.name || 'no WhatsApp name') + ' · ' + esc(t.language) + '</p></div>' +
+          (t.placeholders.length ? '<span class="st st-scheduled shrink-0">' + t.placeholders.length + ' variable' + (t.placeholders.length > 1 ? 's' : '') + '</span>' : '') +
+        '</div>' +
+        '<p class="text-xs text-gray-500 mt-1.5 line-clamp-2">' + esc(t.text.slice(0, 160)) + '</p>' +
+        (t.ready ? '' : '<p class="text-[11px] text-amber-600 mt-1"><i class="fa-solid fa-triangle-exclamation"></i> Add the approved WhatsApp template name to use this template.</p>') +
+      '</button>').join('');
+    $$('.opt-card', box).forEach(b => b.onclick = () => selectTemplate(+b.dataset.id));
+  }
+
+  function selectTemplate(id) {
+    const t = D.templates.find(x => x.id === id);
+    if (!t || !t.ready) { if (t) toast('This template has no WhatsApp template name.', 'err'); return; }
+    S.tplId = id;
+    const old = S.mapping; S.mapping = {};
+    t.placeholders.forEach((n, i) => {
+      S.mapping[n] = old[n] || { source: i === 0 ? 'name' : 'fixed', value: '', fallback: i === 0 ? D.fallbacks.name : '' };
+    });
+    renderTplList($('#f-tsearch') ? $('#f-tsearch').value : '');
+    renderPreview();
+  }
+
+  function renderHeaderFields() {
+    const box = $('#hdr-fields'), h = S.header;
+    if (!h.type) { box.innerHTML = ''; return; }
+    box.innerHTML =
+      (h.type === 'image'
+        ? '<div class="flex items-center gap-2"><label class="btn btn-outline btn-sm cursor-pointer"><i class="fa-solid fa-upload"></i> Upload image' +
+          '<input type="file" id="f-hfile" accept="image/jpeg,image/png" class="hidden"></label><span class="text-xs text-gray-400">JPG / PNG, up to 5 MB</span></div>' : '') +
+      '<input id="f-hurl" class="fld" placeholder="https://… public link to the ' + h.type + '" value="' + esc(h.url) + '">' +
+      (h.type === 'document' ? '<input id="f-hname" class="fld" placeholder="File name shown to the customer (e.g. Itinerary.pdf)" value="' + esc(h.filename) + '">' : '');
+    $('#f-hurl').oninput = e => { h.url = e.target.value.trim(); renderPreview(); };
+    if ($('#f-hname')) $('#f-hname').oninput = e => { h.filename = e.target.value; renderPreview(); };
+    if ($('#f-hfile')) $('#f-hfile').onchange = async e => {
+      const f = e.target.files[0]; if (!f) return;
+      const fd = new FormData(); fd.append('file', f);
+      toast('Uploading image…');
+      const res = await api(D.urls.media, fd);
+      if (!res.success) { toast(res.error || 'Upload failed', 'err'); return; }
+      h.url = res.url; h.filename = res.filename || '';
+      $('#f-hurl').value = h.url; renderPreview(); toast('Image uploaded');
+    };
+  }
+
+  /* ─────────────── Step 2 — audience ─────────────── */
+
+  const AUD_TABS = [
+    ['filters', 'fa-filter', 'Filter contacts', 'By tags, label, date…'],
+    ['segment', 'fa-layer-group', 'Saved segment', 'Reuse a saved filter'],
+    ['contacts', 'fa-user-check', 'Pick contacts', 'Choose individually'],
+    ['csv', 'fa-file-arrow-up', 'Upload file', 'CSV or Excel'],
+  ];
+
+  function apiFilters() {
+    const f = JSON.parse(JSON.stringify(S.aud.filters));
+    const a = f.activity || ''; delete f.activity;
+    if (a.startsWith('active_')) f.active_within_days = +a.split('_')[1];
+    if (a.startsWith('inactive_')) f.inactive_days = +a.split('_')[1];
+    return f;
+  }
+
+  function mountStep2() {
+    $('#step-body').innerHTML =
+      '<div class="card p-5"><div class="grid grid-cols-2 lg:grid-cols-4 gap-2" id="aud-tabs"></div><div id="aud-body" class="mt-5"></div></div>' +
+      '<div id="aud-summary" class="card p-4 mt-4"></div>';
+    renderAudTabs(); renderAudBody(); renderSummary();
+    if (S.aud.type !== 'csv') refreshCounts();
+  }
+
+  function renderAudTabs() {
+    $('#aud-tabs').innerHTML = AUD_TABS.map(([k, icon, title, sub]) =>
+      '<button type="button" data-k="' + k + '" class="opt-card ' + (S.aud.type === k ? 'sel' : '') + '">' +
+        '<i class="fa-solid ' + icon + ' text-brand-dark"></i>' +
+        '<p class="font-semibold text-sm text-gray-800 mt-1">' + title + '</p><p class="text-[11px] text-gray-500">' + sub + '</p></button>').join('');
+    $$('#aud-tabs button').forEach(b => b.onclick = () => {
+      S.aud.type = b.dataset.k; S.counts = null;
+      renderAudTabs(); renderAudBody(); renderSummary();
+      if (S.aud.type === 'csv') recomputeCsvCounts(); else refreshCounts();
+    });
+  }
+
+  function tagChipsHTML(group, selected) {
+    if (!D.tags.length) return '<span class="text-xs text-gray-400">No tags yet — create some under Tags &amp; Segments.</span>';
+    return D.tags.map(t => {
+      const on = selected.includes(t.id);
+      const style = on ? 'background:' + t.color + ';border-color:' + t.color + ';color:#fff' : 'border-color:' + t.color + '88;color:' + t.color;
+      return '<button type="button" class="chip-btn" data-group="' + group + '" data-id="' + t.id + '" style="' + style + '">' + esc(t.name) + '</button>';
+    }).join('');
+  }
+
+  function filterPanelHTML() {
+    const f = S.aud.filters;
+    return '<div class="grid md:grid-cols-2 gap-4">' +
+      '<div class="md:col-span-2"><label class="block text-xs font-semibold text-gray-600 mb-1">Search name or phone</label>' +
+        '<input id="ff-q" class="fld" value="' + esc(f.q) + '" placeholder="Name or number…"></div>' +
+      '<div class="md:col-span-2"><div class="flex items-center justify-between mb-1.5"><label class="text-xs font-semibold text-gray-600">Has tags</label>' +
+        '<div class="inline-flex rounded-lg border border-gray-200 overflow-hidden text-xs" id="ff-mode">' +
+          '<button type="button" data-m="any" class="px-2.5 py-1 ' + (f.tag_mode === 'any' ? 'bg-brand text-white' : 'bg-white text-gray-600') + '">Any of</button>' +
+          '<button type="button" data-m="all" class="px-2.5 py-1 ' + (f.tag_mode === 'all' ? 'bg-brand text-white' : 'bg-white text-gray-600') + '">All of</button></div></div>' +
+        '<div class="flex flex-wrap gap-1.5" id="ff-tags">' + tagChipsHTML('tags', f.tags) + '</div></div>' +
+      '<div class="md:col-span-2"><label class="block text-xs font-semibold text-gray-600 mb-1.5">Exclude tags</label>' +
+        '<div class="flex flex-wrap gap-1.5" id="ff-extags">' + tagChipsHTML('exclude_tags', f.exclude_tags) + '</div></div>' +
+      (D.labels.length ? '<div class="md:col-span-2"><label class="block text-xs font-semibold text-gray-600 mb-1.5">Chat label</label><div class="flex flex-wrap gap-1.5" id="ff-labels">' +
+        D.labels.map(l => '<button type="button" class="chip-btn" data-group="labels" data-id="' + l.id + '" style="' +
+          (f.labels.includes(l.id) ? 'background:#0d5c38;border-color:#0d5c38;color:#fff' : '') + '">' + esc(l.name) + '</button>').join('') + '</div></div>' : '') +
+      '<div><label class="block text-xs font-semibold text-gray-600 mb-1">Added from</label><input type="date" id="ff-from" class="fld" value="' + esc(f.created_from) + '"></div>' +
+      '<div><label class="block text-xs font-semibold text-gray-600 mb-1">Added to</label><input type="date" id="ff-to" class="fld" value="' + esc(f.created_to) + '"></div>' +
+      '<div><label class="block text-xs font-semibold text-gray-600 mb-1">Destination contains</label><input id="ff-dest" class="fld" value="' + esc(f.destination) + '" placeholder="e.g. Goa"></div>' +
+      '<div><label class="block text-xs font-semibold text-gray-600 mb-1">Customer activity</label><select id="ff-act" class="fld">' +
+        [['', 'Any'], ['active_7', 'Messaged in last 7 days'], ['active_30', 'Messaged in last 30 days'], ['active_90', 'Messaged in last 90 days'],
+         ['inactive_30', 'No message for 30+ days'], ['inactive_90', 'No message for 90+ days']]
+          .map(([v, l]) => '<option value="' + v + '"' + (f.activity === v ? ' selected' : '') + '>' + l + '</option>').join('') + '</select></div>' +
+      (D.users.length ? '<div><label class="block text-xs font-semibold text-gray-600 mb-1">Assigned to</label><select id="ff-user" class="fld"><option value="">Anyone</option>' +
+        D.users.map(u => '<option value="' + u.id + '"' + (f.assigned_to[0] === u.id ? ' selected' : '') + '>' + esc(u.name) + '</option>').join('') + '</select></div>' : '') +
+      '</div>' +
+      '<div class="flex items-center justify-between mt-4 pt-4 border-t border-gray-100">' +
+        '<button type="button" id="ff-reset" class="text-xs text-gray-500 hover:text-gray-800"><i class="fa-solid fa-rotate-left"></i> Reset filters</button>' +
+        '<button type="button" id="ff-save" class="btn btn-outline btn-sm"><i class="fa-solid fa-floppy-disk"></i> Save as segment</button></div>';
+  }
+
+  function bindFilterPanel(onChange) {
+    const f = S.aud.filters;
+    const bindVal = (id, key) => { const el = $(id); if (el) el.oninput = e => { f[key] = e.target.value; onChange(); }; };
+    bindVal('#ff-q', 'q'); bindVal('#ff-from', 'created_from'); bindVal('#ff-to', 'created_to');
+    bindVal('#ff-dest', 'destination'); bindVal('#ff-act', 'activity');
+    if ($('#ff-user')) $('#ff-user').onchange = e => { f.assigned_to = e.target.value ? [+e.target.value] : []; onChange(); };
+    $$('#ff-mode button').forEach(b => b.onclick = () => { f.tag_mode = b.dataset.m; $$('#ff-mode button').forEach(x => {
+      const on = x.dataset.m === f.tag_mode; x.className = 'px-2.5 py-1 ' + (on ? 'bg-brand text-white' : 'bg-white text-gray-600'); }); onChange(); });
+    $$('.chip-btn[data-group]').forEach(b => b.onclick = () => {
+      const g = b.dataset.group, id = +b.dataset.id, arr = f[g], i = arr.indexOf(id);
+      if (i >= 0) arr.splice(i, 1); else arr.push(id);
+      // tag include/exclude are mutually exclusive
+      if (g === 'tags' && arr.includes(id)) f.exclude_tags = f.exclude_tags.filter(x => x !== id);
+      if (g === 'exclude_tags' && arr.includes(id)) f.tags = f.tags.filter(x => x !== id);
+      if (g === 'labels') { b.style.cssText = arr.includes(id) ? 'background:#0d5c38;border-color:#0d5c38;color:#fff' : ''; }
+      else { $('#ff-tags').innerHTML = tagChipsHTML('tags', f.tags); $('#ff-extags').innerHTML = tagChipsHTML('exclude_tags', f.exclude_tags); bindFilterPanel(onChange); }
+      onChange();
+    });
+    $('#ff-reset').onclick = () => { S.aud.filters = emptyFilters(); renderAudBody(); onChange(); };
+    $('#ff-save').onclick = saveSegmentModal;
+  }
+
+  function saveSegmentModal() {
+    showModal(
+      '<div class="p-6"><h3 class="text-lg font-bold text-gray-800">Save as segment</h3>' +
+      '<p class="text-xs text-gray-500 mt-1">Segments re-check who matches every time you use them.</p>' +
+      '<input id="sg-name" class="fld mt-4" placeholder="Segment name" maxlength="120">' +
+      '<input id="sg-desc" class="fld mt-2" placeholder="Description (optional)" maxlength="255">' +
+      '<p id="sg-err" class="text-xs text-red-600 mt-2 hidden"></p>' +
+      '<div class="flex justify-end gap-2 mt-5"><button class="btn btn-outline" data-close>Cancel</button><button class="btn btn-primary" id="sg-ok">Save</button></div></div>',
+      (root, close) => {
+        $('#sg-name', root).focus();
+        $('#sg-ok', root).onclick = async () => {
+          const name = $('#sg-name', root).value.trim();
+          if (!name) { const e = $('#sg-err', root); e.textContent = 'Please enter a name.'; e.classList.remove('hidden'); return; }
+          const res = await api(D.urls.segment_save, { name, description: $('#sg-desc', root).value, filters: apiFilters() });
+          if (!res.success) { const e = $('#sg-err', root); e.textContent = res.error; e.classList.remove('hidden'); return; }
+          D.segments.push(res.segment); close(); toast('Segment “' + name + '” saved');
+        };
+      });
+  }
+
+  function renderAudBody() {
+    const box = $('#aud-body'), a = S.aud;
+    if (a.type === 'filters') {
+      box.innerHTML = filterPanelHTML();
+      bindFilterPanel(debounce(refreshCounts, 350));
+    } else if (a.type === 'segment') {
+      box.innerHTML = D.segments.length
+        ? '<label class="block text-xs font-semibold text-gray-600 mb-1">Segment</label><select id="sg-pick" class="fld"><option value="">Choose a segment…</option>' +
+          D.segments.map(s => '<option value="' + s.id + '"' + (String(s.id) === String(a.segmentId) ? ' selected' : '') + '>' + esc(s.name) + '</option>').join('') + '</select>' +
+          '<p class="text-xs text-gray-400 mt-2">Contacts are matched at the moment you send.</p>'
+        : '<div class="border border-dashed border-gray-300 rounded-xl p-6 text-center text-sm text-gray-500">No saved segments yet. Build a filter in <b>Filter contacts</b> and press “Save as segment”.</div>';
+      const sel = $('#sg-pick');
+      if (sel) sel.onchange = e => { a.segmentId = e.target.value; refreshCounts(); };
+    } else if (a.type === 'contacts') {
+      box.innerHTML = '<details class="mb-4"><summary class="text-sm font-semibold text-gray-700 cursor-pointer">Narrow the list</summary><div class="mt-3">' + filterPanelHTML() + '</div></details>' +
+        '<div id="pick-box"></div>';
+      bindFilterPanel(debounce(() => { a.pickPage = 1; loadPicker(); }, 350));
+      loadPicker();
+    } else {
+      renderCsvPanel();
+    }
+  }
+
+  async function loadPicker() {
+    const box = $('#pick-box'); if (!box) return;
+    box.innerHTML = '<p class="text-sm text-gray-400 py-6 text-center">Loading contacts…</p>';
+    const res = await api(D.urls.contacts, { filters: apiFilters(), page: S.aud.pickPage });
+    if (!res.success) { box.innerHTML = '<p class="text-sm text-red-600">' + esc(res.error) + '</p>'; return; }
+    const ids = S.aud.ids;
+    const allOn = res.contacts.length && res.contacts.every(c => ids.has(c.id));
+    box.innerHTML =
+      '<div class="flex items-center justify-between mb-2 text-xs text-gray-500"><span>' + fmtNum(res.total) + ' contacts · <b class="text-gray-800">' + ids.size + ' selected</b></span>' +
+        (ids.size ? '<button type="button" id="pk-clear" class="text-red-600 hover:underline">Clear selection</button>' : '') + '</div>' +
+      '<div class="border border-gray-200 rounded-xl overflow-hidden"><table class="w-full text-sm"><thead class="bg-gray-50 text-xs text-gray-500"><tr>' +
+        '<th class="p-2.5 w-8"><input type="checkbox" id="pk-all"' + (allOn ? ' checked' : '') + '></th><th class="text-left p-2.5">Contact</th><th class="text-left p-2.5 hidden sm:table-cell">Tags</th></tr></thead><tbody>' +
+      (res.contacts.length ? res.contacts.map(c =>
+        '<tr class="border-t border-gray-100"><td class="p-2.5"><input type="checkbox" class="pk-row" value="' + c.id + '"' + (ids.has(c.id) ? ' checked' : '') + '></td>' +
+        '<td class="p-2.5"><p class="font-medium text-gray-800">' + esc(c.name || 'Unknown') + (c.opted_out ? ' <span class="st st-failed ml-1">Opted out</span>' : '') + '</p>' +
+        '<p class="text-xs text-gray-500">' + esc(c.phone) + (c.destination ? ' · ' + esc(c.destination) : '') + '</p></td>' +
+        '<td class="p-2.5 hidden sm:table-cell"><div class="flex flex-wrap gap-1">' + c.tags.map(tagChip).join('') + '</div></td></tr>').join('')
+        : '<tr><td colspan="3" class="p-6 text-center text-gray-400">No contacts found.</td></tr>') +
+      '</tbody></table></div>' +
+      '<div class="flex items-center justify-between mt-3 text-xs text-gray-500"><span>Page ' + res.page + ' of ' + res.pages + '</span><div class="flex gap-2">' +
+        '<button type="button" class="btn btn-outline btn-sm" id="pk-prev"' + (res.page <= 1 ? ' disabled' : '') + '>Previous</button>' +
+        '<button type="button" class="btn btn-outline btn-sm" id="pk-next"' + (res.page >= res.pages ? ' disabled' : '') + '>Next</button></div></div>';
+
+    $$('.pk-row', box).forEach(cb => cb.onchange = () => { cb.checked ? ids.add(+cb.value) : ids.delete(+cb.value); afterPick(); });
+    $('#pk-all', box).onchange = e => { res.contacts.forEach(c => e.target.checked ? ids.add(c.id) : ids.delete(c.id)); $$('.pk-row', box).forEach(cb => cb.checked = e.target.checked); afterPick(); };
+    if ($('#pk-clear', box)) $('#pk-clear', box).onclick = () => { ids.clear(); loadPicker(); refreshCounts(); };
+    $('#pk-prev', box).onclick = () => { S.aud.pickPage--; loadPicker(); };
+    $('#pk-next', box).onclick = () => { S.aud.pickPage++; loadPicker(); };
+    function afterPick() { const s = $('#pick-box .text-gray-800'); if (s) s.textContent = ids.size + ' selected'; debouncedCounts(); }
+  }
+  const debouncedCounts = debounce(() => refreshCounts(), 300);
+
+  /* CSV upload */
+
+  function renderCsvPanel() {
+    const box = $('#aud-body'), c = S.aud.csv;
+    if (!c) {
+      box.innerHTML =
+        '<label class="drop block" id="drop"><input type="file" id="csv-file" accept=".csv,.xlsx,.xlsm,.txt" class="hidden">' +
+          '<i class="fa-solid fa-cloud-arrow-up text-3xl text-gray-400"></i>' +
+          '<p class="font-semibold text-gray-700 mt-2">Drop a CSV or Excel file here, or click to browse</p>' +
+          '<p class="text-xs text-gray-400 mt-1">Needs a <b>phone</b> column. Optional: name, tags and any other columns (usable as template variables). Max ' + fmtNum(D.limits.csv_rows) + ' rows.</p></label>' +
+        '<button type="button" id="csv-sample" class="text-xs text-brand-dark hover:underline mt-3"><i class="fa-solid fa-download"></i> Download a sample file</button>';
+      const inp = $('#csv-file'), drop = $('#drop');
+      inp.onchange = () => inp.files[0] && uploadCsv(inp.files[0]);
+      ['dragenter', 'dragover'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.add('over'); }));
+      ['dragleave', 'drop'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove('over'); }));
+      drop.addEventListener('drop', e => { const f = e.dataTransfer.files[0]; if (f) uploadCsv(f); });
+      $('#csv-sample').onclick = () => {
+        const blob = new Blob(['phone,name,tags,city\n919876543210,Rahul Sharma,goa-lead,Delhi\n919812345678,Priya Singh,honeymoon,Mumbai\n'], { type: 'text/csv' });
+        const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'sample_contacts.csv'; a.click();
+      };
+      return;
+    }
+    const tile = (n, label, cls) => '<div class="rounded-xl border border-gray-200 p-3"><p class="text-xl font-bold ' + (cls || 'text-gray-800') + '">' + fmtNum(n) + '</p><p class="text-[11px] text-gray-500">' + label + '</p></div>';
+    box.innerHTML =
+      '<div class="flex items-center justify-between mb-3"><p class="text-sm font-semibold text-gray-700"><i class="fa-regular fa-file-lines text-brand-dark"></i> ' + esc(c.fileName || 'Uploaded file') + '</p>' +
+        '<button type="button" id="csv-change" class="text-xs text-red-600 hover:underline">Remove / replace</button></div>' +
+      '<div class="grid grid-cols-2 sm:grid-cols-5 gap-2">' + tile(c.rows.length, 'Valid numbers', 'text-emerald-600') + tile(c.existing_count, 'Already in CRM') + tile(c.new_count, 'New contacts') +
+        tile(c.invalid_count, 'Invalid rows', c.invalid_count ? 'text-red-600' : '') + tile(c.duplicates, 'Duplicates removed') + '</div>' +
+      (c.opted_out_count ? '<p class="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mt-3"><i class="fa-solid fa-ban"></i> ' + c.opted_out_count + ' of these contacts previously opted out and will be skipped.</p>' : '') +
+      (c.invalid.length ? '<details class="mt-3"><summary class="text-xs text-gray-500 cursor-pointer">Show invalid rows (' + c.invalid_count + ')</summary><ul class="text-xs text-gray-600 mt-2 space-y-0.5">' +
+        c.invalid.map(r => '<li>Row ' + r.row + ': <span class="font-mono">' + esc(r.value || '(empty)') + '</span> — ' + esc(r.reason) + '</li>').join('') + (c.invalid_count > c.invalid.length ? '<li>…and ' + (c.invalid_count - c.invalid.length) + ' more</li>' : '') + '</ul></details>' : '') +
+      (c.columns.length ? '<p class="text-xs text-gray-500 mt-4">Columns available as variables: ' + c.columns.map(x => '<span class="st st-sent mr-1">' + esc(x) + '</span>').join('') + '</p>' : '') +
+      '<div class="border-t border-gray-100 mt-4 pt-4 space-y-3">' +
+        '<label class="flex items-start gap-2 text-sm text-gray-700"><input type="checkbox" id="csv-create" class="mt-1"' + (S.aud.createContacts ? ' checked' : '') + '>' +
+          '<span><b>Add new numbers to CRM contacts</b><br><span class="text-xs text-gray-500">Recommended — the broadcast then appears in each contact’s chat history and replies are counted for this campaign. If unticked, new numbers are still messaged but aren’t saved as contacts.</span></span></label>' +
+        '<div><p class="text-xs font-semibold text-gray-600 mb-1.5">Tag these contacts <span class="font-normal text-gray-400">(optional)</span></p><div class="flex flex-wrap gap-1.5" id="csv-tags"></div>' +
+          '<input id="csv-newtag" class="fld mt-2" placeholder="Or type new tag names, separated by commas"></div></div>';
+    $('#csv-change').onclick = () => { S.aud.csv = null; S.counts = null; renderAudBody(); renderSummary(); };
+    $('#csv-create').onchange = e => { S.aud.createContacts = e.target.checked; };
+    renderCsvTags();
+    $('#csv-newtag').oninput = e => { S.aud.csvNewTags = e.target.value.split(',').map(s => s.trim()).filter(Boolean); };
+    $('#csv-newtag').value = (S.aud.csvNewTags || []).join(', ');
+  }
+
+  function renderCsvTags() {
+    const box = $('#csv-tags'); if (!box) return;
+    box.innerHTML = D.tags.length ? D.tags.map(t => {
+      const on = S.aud.csvTags.includes(t.name);
+      const style = on ? 'background:' + t.color + ';border-color:' + t.color + ';color:#fff' : 'border-color:' + t.color + '88;color:' + t.color;
+      return '<button type="button" class="chip-btn" data-name="' + esc(t.name) + '" style="' + style + '">' + esc(t.name) + '</button>';
+    }).join('') : '<span class="text-xs text-gray-400">No existing tags.</span>';
+    $$('button', box).forEach(b => b.onclick = () => {
+      const n = b.dataset.name, i = S.aud.csvTags.indexOf(n); i >= 0 ? S.aud.csvTags.splice(i, 1) : S.aud.csvTags.push(n); renderCsvTags();
+    });
+  }
+
+  async function uploadCsv(file) {
+    const fd = new FormData(); fd.append('file', file);
+    $('#aud-body').innerHTML = '<p class="text-sm text-gray-500 text-center py-10"><i class="fa-solid fa-spinner fa-spin"></i> Reading file…</p>';
+    const res = await api(D.urls.csv, fd);
+    if (!res.success) { S.aud.csv = null; renderAudBody(); toast(res.error || 'Could not read file', 'err'); return; }
+    res.fileName = file.name; S.aud.csv = res;
+    // drop CSV-column variable choices that no longer exist
+    Object.values(S.mapping).forEach(m => { if (m.source === 'column' && !res.columns.includes(m.value)) m.value = ''; });
+    recomputeCsvCounts(); renderAudBody();
+  }
+
+  function recomputeCsvCounts() {
+    const c = S.aud.csv;
+    if (!c) { S.counts = null; renderSummary(); return; }
+    S.counts = { total: c.rows.length, opted_out: c.opted_out_count, eligible: c.rows.length - c.opted_out_count,
+                 sample: c.rows.slice(0, 5).map(r => ({ name: r.name, phone: r.phone, destination: '', email: '', extra: r.extra })) };
+    renderSummary(); renderPreview(); updateFooter();
+  }
+
+  let countSeq = 0;
+  async function refreshCounts() {
+    const a = S.aud;
+    let body;
+    if (a.type === 'filters') body = { type: 'filters', filters: apiFilters() };
+    else if (a.type === 'segment') { if (!a.segmentId) { S.counts = null; renderSummary(); return; } body = { type: 'segment', segment_id: +a.segmentId }; }
+    else if (a.type === 'contacts') { if (!a.ids.size) { S.counts = null; renderSummary(); return; } body = { type: 'contacts', session_ids: [...a.ids], filters: {} }; }
+    else return;
+    const seq = ++countSeq; S.countsLoading = true; renderSummary();
+    const res = await api(D.urls.preview, body);
+    if (seq !== countSeq) return;
+    S.countsLoading = false; S.counts = res.success ? res : null;
+    if (!res.success) toast(res.error || 'Could not count contacts', 'err');
+    renderSummary(); renderPreview(); updateFooter();
+  }
+
+  function renderSummary() {
+    const el = $('#aud-summary'); if (!el) return;
+    const c = S.counts;
+    if (S.countsLoading) { el.innerHTML = '<p class="text-sm text-gray-500"><i class="fa-solid fa-spinner fa-spin"></i> Counting contacts…</p>'; return; }
+    if (!c) { el.innerHTML = '<p class="text-sm text-gray-400">' + (S.aud.type === 'csv' ? 'Upload a file to see who will receive this campaign.' : 'Choose an audience to see who will receive this campaign.') + '</p>'; return; }
+    el.innerHTML = '<div class="flex flex-wrap items-center gap-x-8 gap-y-2">' +
+      '<div><p class="text-2xl font-bold ' + (c.eligible ? 'text-emerald-600' : 'text-red-600') + '">' + fmtNum(c.eligible) + '</p><p class="text-xs text-gray-500">will receive the message</p></div>' +
+      '<div><p class="text-lg font-semibold text-gray-700">' + fmtNum(c.total) + '</p><p class="text-xs text-gray-500">matching contacts</p></div>' +
+      (c.opted_out ? '<div><p class="text-lg font-semibold text-amber-600">' + fmtNum(c.opted_out) + '</p><p class="text-xs text-gray-500">opted out (skipped)</p></div>' : '') +
+      (c.eligible > D.limits.recipients ? '<p class="text-xs text-red-600 w-full">Over the limit of ' + fmtNum(D.limits.recipients) + ' per campaign — narrow your audience.</p>' : '') + '</div>';
+  }
+
+  /* ─────────────── Step 3 — variables ─────────────── */
+
+  function mountStep3() {
+    const t = tpl();
+    if (!t.placeholders.length) {
+      $('#step-body').innerHTML = '<div class="card p-8 text-center"><i class="fa-regular fa-circle-check text-3xl text-brand-dark"></i>' +
+        '<h3 class="font-semibold text-gray-800 mt-3">This template has no variables</h3><p class="text-sm text-gray-500 mt-1">Every contact receives exactly the same message. You can continue.</p></div>';
+      return;
+    }
+    const cols = S.aud.type === 'csv' && S.aud.csv ? S.aud.csv.columns : [];
+    // a "CSV column" choice is only valid while a file with columns is the audience
+    Object.values(S.mapping).forEach(m => { if (m.source === 'column' && !cols.length) { m.source = 'name'; m.value = ''; m.fallback = D.fallbacks.name; } });
+    const sources = D.sources.filter(s => s.value !== 'column' || cols.length);
+    const samples = sampleList();
+    $('#step-body').innerHTML =
+      '<div class="card p-5"><div class="flex items-center justify-between gap-3 mb-1"><h3 class="font-semibold text-gray-800">Fill in the template variables</h3>' +
+        (samples.length > 1 ? '<select id="v-sample" class="fld !w-auto text-xs">' + samples.map((s, i) => '<option value="' + i + '"' + (i === S.previewIdx ? ' selected' : '') + '>Preview as ' + esc(s.name || s.phone) + '</option>').join('') + '</select>' : '') + '</div>' +
+        '<p class="text-xs text-gray-500 mb-4">Choose where each value comes from. If a contact has no value, the fallback is used — WhatsApp rejects empty variables.</p>' +
+        '<div class="space-y-3" id="v-rows">' + t.placeholders.map(n => {
+          const m = S.mapping[n];
+          return '<div class="border border-gray-200 rounded-xl p-3" data-n="' + n + '"><div class="flex items-center gap-2 mb-2"><span class="st st-scheduled font-mono">{{' + n + '}}</span></div>' +
+            '<div class="grid sm:grid-cols-3 gap-2">' +
+              '<div><label class="block text-[11px] font-semibold text-gray-500 mb-1">Value from</label><select class="fld v-src">' +
+                sources.map(s => '<option value="' + s.value + '"' + (m.source === s.value ? ' selected' : '') + '>' + s.label + '</option>').join('') + '</select></div>' +
+              '<div class="v-val-wrap' + (['column', 'fixed'].includes(m.source) ? '' : ' hidden') + '"><label class="block text-[11px] font-semibold text-gray-500 mb-1 v-val-label">' + (m.source === 'column' ? 'Column' : 'Text') + '</label>' +
+                (m.source === 'column'
+                  ? '<select class="fld v-val"><option value="">Choose…</option>' + cols.map(c => '<option' + (m.value === c ? ' selected' : '') + '>' + esc(c) + '</option>').join('') + '</select>'
+                  : '<input class="fld v-val" value="' + esc(m.value) + '" placeholder="Same text for everyone">') + '</div>' +
+              '<div class="v-fb-wrap' + (m.source === 'fixed' ? ' hidden' : '') + '"><label class="block text-[11px] font-semibold text-gray-500 mb-1">If empty, use</label><input class="fld v-fb" value="' + esc(m.fallback) + '" placeholder="Fallback text"></div>' +
+            '</div></div>';
+        }).join('') + '</div></div>';
+
+    $$('#v-rows [data-n]').forEach(row => {
+      const n = row.dataset.n, m = S.mapping[n];
+      row.querySelector('.v-src').onchange = e => {
+        m.source = e.target.value; m.value = ''; m.fallback = D.fallbacks[m.source] && m.source !== 'fixed' ? D.fallbacks[m.source] : '';
+        mountStep3(); renderPreview();
+      };
+      const val = row.querySelector('.v-val'); if (val) val.oninput = val.onchange = e => { m.value = e.target.value; renderPreview(); };
+      row.querySelector('.v-fb').oninput = e => { m.fallback = e.target.value; renderPreview(); };
+    });
+    if ($('#v-sample')) $('#v-sample').onchange = e => { S.previewIdx = +e.target.value; renderPreview(); };
+  }
+
+  /* ─────────────── Step 4 — review & schedule ─────────────── */
+
+  function audienceLabel() {
+    const a = S.aud;
+    if (a.type === 'segment') { const s = D.segments.find(x => String(x.id) === String(a.segmentId)); return 'Segment: ' + (s ? s.name : '—'); }
+    if (a.type === 'contacts') return a.ids.size + ' hand-picked contacts';
+    if (a.type === 'csv') return 'Uploaded file: ' + (a.csv ? a.csv.fileName : '');
+    const f = a.filters, bits = [];
+    if (f.tags.length) bits.push('tags: ' + f.tags.map(id => (D.tags.find(t => t.id === id) || {}).name).join(', '));
+    if (f.exclude_tags.length) bits.push('excluding ' + f.exclude_tags.map(id => (D.tags.find(t => t.id === id) || {}).name).join(', '));
+    if (f.q) bits.push('search “' + f.q + '”');
+    return bits.length ? 'Filtered contacts (' + bits.join('; ') + ')' : 'Filtered contacts';
+  }
+
+  function mountStep4() {
+    const t = tpl(), c = S.counts, n = c ? c.eligible : 0;
+    const row = (k, v) => '<div class="flex justify-between gap-4 py-2 border-b border-gray-100 last:border-0"><dt class="text-sm text-gray-500 shrink-0">' + k + '</dt><dd class="text-sm font-medium text-gray-800 text-right break-words">' + v + '</dd></div>';
+    const minAt = new Date(Date.now() + 5 * 60000 - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+    $('#step-body').innerHTML =
+      '<div class="card p-5"><h3 class="font-semibold text-gray-800 mb-2">Review</h3><dl>' +
+        row('Campaign', esc(S.name)) + row('Template', esc(t.title) + ' <span class="text-gray-400 font-mono text-xs">(' + esc(t.name) + ')</span>') +
+        row('Audience', esc(audienceLabel())) + row('Recipients', '<span class="text-emerald-600">' + fmtNum(n) + '</span>' + (c && c.opted_out ? ' <span class="text-xs text-amber-600">(' + fmtNum(c.opted_out) + ' opted-out skipped)</span>' : '')) +
+        (S.header.type ? row('Header', esc(S.header.type)) : '') +
+        row('Estimated send time', fmtDur(n / SEND_RATE)) + '</dl></div>' +
+      '<div class="card p-5 mt-4"><h3 class="font-semibold text-gray-800 mb-3">When should it go out?</h3><div class="grid sm:grid-cols-3 gap-2" id="sch-opts">' +
+        [['now', 'fa-paper-plane', 'Send now', 'Starts immediately'], ['later', 'fa-clock', 'Schedule', 'Pick a date & time'], ['draft', 'fa-floppy-disk', 'Save as draft', 'Send later from the campaign page']]
+          .map(([k, i, tt, s]) => '<button type="button" data-k="' + k + '" class="opt-card ' + (S.schedule.mode === k ? 'sel' : '') + '"><i class="fa-solid ' + i + ' text-brand-dark"></i><p class="font-semibold text-sm mt-1">' + tt + '</p><p class="text-[11px] text-gray-500">' + s + '</p></button>').join('') + '</div>' +
+        '<div id="sch-at" class="mt-3 ' + (S.schedule.mode === 'later' ? '' : 'hidden') + '"><label class="block text-xs font-semibold text-gray-600 mb-1">Send at (India Standard Time)</label>' +
+          '<input type="datetime-local" id="sch-input" class="fld sm:w-64" min="' + minAt + '" value="' + esc(S.schedule.at) + '"></div></div>' +
+      '<div class="card p-5 mt-4' + (S.schedule.mode === 'draft' ? ' hidden' : '') + '" id="consent-card"><label class="flex items-start gap-3 cursor-pointer">' +
+        '<input type="checkbox" id="consent" class="mt-1"' + (S.consent ? ' checked' : '') + '><span class="text-sm text-gray-700">I confirm these contacts have <b>opted in</b> to receive WhatsApp messages from us. ' +
+        '<span class="text-gray-500">Anyone who replies <b>STOP</b> is unsubscribed automatically and excluded from future campaigns.</span></span></label></div>';
+
+    $$('#sch-opts button').forEach(b => b.onclick = () => { S.schedule.mode = b.dataset.k; mountStep4(); updateFooter(); });
+    $('#sch-input').oninput = e => { S.schedule.at = e.target.value; };
+    $('#consent').onchange = e => { S.consent = e.target.checked; };
+  }
+
+  /* ─────────────── Submit ─────────────── */
+
+  async function submit() {
+    const t = tpl(), n = S.counts ? S.counts.eligible : 0, mode = S.schedule.mode;
+    if (mode === 'now') {
+      const ok = await confirmModal({ title: 'Send campaign now?', message: 'Template “' + t.title + '” will be sent to ' + fmtNum(n) + ' contacts right away. This cannot be undone once messages are sent.', okText: 'Send now' });
+      if (!ok) return;
+    }
+    const a = S.aud;
+    const audience = { type: a.type };
+    if (a.type === 'filters') audience.filters = apiFilters();
+    if (a.type === 'segment') audience.segment_id = +a.segmentId;
+    if (a.type === 'contacts') { audience.session_ids = [...a.ids]; audience.filters = {}; }
+    if (a.type === 'csv') {
+      audience.csv_rows = a.csv.rows; audience.create_contacts = a.createContacts;
+      audience.csv_tags = [...new Set([...(a.csvTags || []), ...(a.csvNewTags || [])])];
+    }
+    const mapping = {}; t.placeholders.forEach(k => mapping[k] = S.mapping[k]);
+
+    S.submitting = true; updateFooter();
+    const res = await api(D.urls.create, {
+      name: S.name.trim(), template_id: S.tplId,
+      header: S.header.type ? S.header : {}, mapping, audience,
+      schedule: { mode, at: S.schedule.at }, consent: S.consent,
+    });
+    S.submitting = false; updateFooter();
+    if (!res.success) { showError(res.error || 'Something went wrong.'); return; }
+    sessionStorage.removeItem('campaignSelection');
+    window.location.href = res.redirect;
+  }
+
+  /* ─────────────── Init ─────────────── */
+
+  (function init() {
+    try {
+      const sel = JSON.parse(sessionStorage.getItem('campaignSelection') || 'null');
+      if (D.from_selection && sel) {
+        if (sel.select_all && sel.filters) {
+          const f = S.aud.filters, sf = sel.filters;
+          f.q = sf.q || ''; f.created_from = sf.start_date || ''; f.created_to = sf.end_date || '';
+          if (/^\d+$/.test(sf.tag || '')) f.tags = [+sf.tag];
+        } else if (sel.ids && sel.ids.length) {
+          S.aud.type = 'contacts'; sel.ids.forEach(i => S.aud.ids.add(+i));
+        }
+      }
+    } catch (e) { /* ignore */ }
+    if (D.prefill_segment && D.segments.some(s => String(s.id) === String(D.prefill_segment))) {
+      S.aud.type = 'segment'; S.aud.segmentId = D.prefill_segment;
+    }
+    const pre = new Date(Date.now() + 60 * 60000); pre.setMinutes(0, 0, 0);
+    S.schedule.at = new Date(pre.getTime() - pre.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+    renderStepper(); mountStep1(); updateFooter(); renderPreview();
+    if (S.aud.type !== 'filters') refreshCounts();
+  })();
+})();
+</script>
+{% endverbatim %}
+{% endblock %}

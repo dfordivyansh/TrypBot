@@ -1,0 +1,610 @@
+{% extends "chatbot/crm/base.html" %}
+{% load static %}
+{% load tz %}
+
+{% block title %}Create Itinerary{% endblock %}
+
+{% block extra_head %}
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.19.0/dist/tabler-icons.min.css">
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "Segoe UI", system-ui, sans-serif; background: #f1f5f9; color: #1e293b; min-height: 100vh; }
+  :root {
+    --green: #16a34a; --green-light: #dcfce7; --green-mid: #22c55e;
+    --slate-50: #f8fafc; --slate-100: #f1f5f9; --slate-200: #e2e8f0;
+    --slate-300: #cbd5e1; --slate-400: #94a3b8; --slate-500: #64748b;
+    --slate-600: #475569; --slate-700: #334155; --slate-800: #1e293b;
+    --slate-900: #0f172a; --blue: #2563eb; --red: #ef4444;
+    --amber: #f59e0b; --indigo: #4f46e5; --cyan: #0891b2; --purple: #7c3aed;
+  }
+  .app { display: flex; height: 100vh; overflow: hidden; }
+  .sidebar { width: 220px; background: #fff; border-right: 1px solid var(--slate-200); display: flex; flex-direction: column; flex-shrink: 0; z-index: 10; }
+  .sidebar-header { padding: 18px 16px 14px; border-bottom: 1px solid var(--slate-200); }
+  .sidebar-header h2 { font-size: 16px; font-weight: 700; color: var(--slate-800); }
+  .sidebar-header p { font-size: 11px; color: var(--slate-400); margin-top: 2px; }
+  .sidebar-nav { padding: 12px 8px; display: flex; flex-direction: column; gap: 2px; }
+  .nav-item { display: flex; align-items: center; gap: 10px; padding: 9px 12px; border-radius: 10px; font-size: 13px; font-weight: 500; cursor: pointer; transition: all 0.15s; text-decoration: none; color: var(--slate-600); border: none; background: none; width: 100%; text-align: left; }
+  .nav-item.active { background: var(--green-light); color: var(--green); font-weight: 600; }
+  .nav-item:hover:not(.active) { background: var(--slate-100); }
+  .nav-item i { width: 16px; text-align: center; font-size: 15px; }
+  .layout-split { display: flex; flex: 1; overflow: hidden; }
+  .form-column { flex: 1; overflow-y: auto; padding: 20px 24px; }
+  .result-column { width: 480px; flex-shrink: 0; border-left: 1px solid var(--slate-200); display: flex; flex-direction: column; overflow: hidden; background: #fff; }
+  .right-panel { width: 260px; flex-shrink: 0; background: var(--slate-50); border-left: 1px solid var(--slate-200); overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+  .tabs { display: flex; gap: 2px; padding: 16px; border-bottom: 1px solid var(--slate-200); background: #fff; flex-shrink: 0; }
+  .tab-btn { display: flex; align-items: center; gap: 6px; padding: 8px 16px; border-radius: 8px; border: none; background: none; font-size: 13px; font-weight: 500; cursor: pointer; color: var(--slate-600); transition: all 0.15s; font-family: inherit; }
+  .tab-btn.active { background: var(--green-light); color: var(--green); font-weight: 700; }
+  .tab-btn:hover:not(.active) { background: var(--slate-100); }
+  .section-title { font-size: 13px; font-weight: 700; color: var(--slate-800); display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+  .section-title i { font-size: 16px; }
+  .badge { font-size: 11px; font-weight: 600; background: var(--green-light); color: var(--green); padding: 3px 10px; border-radius: 999px; margin-left: auto; }
+  .day-card { border: 1px solid var(--slate-200); border-radius: 12px; padding: 14px; background: var(--slate-50); margin-bottom: 10px; }
+  .day-card-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+  .day-label { font-size: 13px; font-weight: 600; color: var(--slate-700); display: flex; align-items: center; gap: 6px; }
+  .day-label i { color: var(--amber); }
+  .remove-btn { font-size: 11px; color: var(--slate-400); background: none; border: none; cursor: pointer; display: flex; align-items: center; gap: 4px; padding: 4px 8px; border-radius: 6px; transition: all 0.15s; }
+  .remove-btn:hover { color: var(--red); background: #fef2f2; }
+  .field { width: 100%; border: 1px solid var(--slate-200); border-radius: 8px; padding: 9px 12px; font-size: 13px; background: #fff; transition: all 0.15s; color: var(--slate-800); font-family: inherit; }
+  .field:focus { outline: none; border-color: var(--green-mid); box-shadow: 0 0 0 3px rgba(34,197,94,0.12); }
+  .field::placeholder { color: var(--slate-400); }
+  select.field { appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%2394a3b8' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 10px center; padding-right: 28px; }
+  .add-day-btn { display: flex; align-items: center; gap: 6px; background: var(--slate-100); border: 1px solid var(--slate-200); color: var(--slate-700); font-size: 12px; font-weight: 600; padding: 8px 14px; border-radius: 8px; cursor: pointer; margin-top: 4px; margin-bottom: 24px; transition: all 0.15s; font-family: inherit; }
+  .add-day-btn:hover { background: var(--slate-200); }
+  .add-day-btn i { color: var(--green); font-size: 14px; }
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
+  .grid-2r { display: grid; grid-template-columns: 2fr 1fr; gap: 10px; }
+  .generate-btn { width: 100%; background: var(--green); color: #fff; border: none; border-radius: 12px; padding: 14px; font-size: 15px; font-weight: 700; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; transition: all 0.15s; font-family: inherit; }
+  .generate-btn:hover { background: #15803d; }
+  .generate-btn:active { transform: scale(0.99); }
+  .generate-btn:disabled { background: var(--slate-400); cursor: not-allowed; }
+  .generate-hint { text-align: center; font-size: 11px; color: var(--slate-400); margin-top: 6px; }
+  .error-banner { background: #fef2f2; border: 1px solid #fecaca; border-radius: 12px; padding: 14px 16px; margin-bottom: 16px; }
+  .error-banner-header { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; font-weight: 600; color: #b91c1c; font-size: 13px; }
+  .error-banner ul { list-style: disc; padding-left: 20px; font-size: 12px; color: #dc2626; }
+  .error-banner ul li { margin: 2px 0; }
+  .result-header { padding: 14px 18px; border-bottom: 1px solid var(--slate-200); display: flex; align-items: center; justify-content: space-between; background: #fff; flex-shrink: 0; }
+  .result-header-left { display: flex; align-items: center; gap: 8px; font-weight: 700; color: var(--green); font-size: 14px; }
+  .copy-btn { display: flex; align-items: center; gap: 6px; padding: 7px 14px; border-radius: 8px; border: 1px solid var(--slate-200); background: #fff; color: var(--slate-700); font-size: 12px; font-weight: 600; cursor: pointer; transition: all 0.15s; font-family: inherit; }
+  .copy-btn:hover { background: var(--slate-100); }
+  .copy-btn.copied { background: #dcfce7; border-color: #86efac; color: var(--green); }
+  .result-content { flex: 1; padding: 20px 24px; overflow-y: auto; background: var(--slate-50); }
+  .result-pre { white-space: pre-wrap; font-family: "Courier New", monospace; font-size: 12.5px; line-height: 1.75; color: var(--slate-700); }
+  .placeholder-box { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 360px; text-align: center; color: var(--slate-400); gap: 12px; padding: 40px; }
+  .placeholder-icon { width: 72px; height: 72px; border-radius: 50%; background: var(--slate-100); display: flex; align-items: center; justify-content: center; font-size: 32px; color: var(--slate-300); }
+  .placeholder-box h3 { font-size: 17px; font-weight: 600; color: var(--slate-600); }
+  .placeholder-box p { font-size: 13px; max-width: 280px; line-height: 1.6; }
+  .loading-overlay { position: fixed; inset: 0; background: rgba(15,23,42,0.4); backdrop-filter: blur(4px); z-index: 200; display: none; align-items: center; justify-content: center; }
+  .loading-overlay.active { display: flex; }
+  .loading-card { background: #fff; border-radius: 20px; padding: 40px 48px; display: flex; flex-direction: column; align-items: center; gap: 18px; text-align: center; box-shadow: 0 24px 64px rgba(0,0,0,0.2); }
+  .spinner { width: 48px; height: 48px; border: 3px solid var(--slate-200); border-top-color: var(--green-mid); border-radius: 50%; animation: spin 0.8s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .loading-card h3 { font-size: 18px; font-weight: 700; color: var(--slate-800); }
+  .loading-card p { font-size: 13px; color: var(--slate-400); max-width: 240px; line-height: 1.5; }
+  .success-badge { display: inline-flex; align-items: center; gap: 6px; background: var(--green-light); color: var(--green); font-size: 11px; font-weight: 700; padding: 4px 10px; border-radius: 99px; margin-bottom: 4px; }
+  .itinerary-result { background: var(--slate-50); border-radius: 12px; padding: 20px; }
+  .itinerary-meta { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 14px; padding-bottom: 14px; border-bottom: 1px solid var(--slate-200); }
+  .meta-chip { font-size: 11px; font-weight: 600; background: #fff; border: 1px solid var(--slate-200); color: var(--slate-600); padding: 4px 10px; border-radius: 8px; display: flex; align-items: center; gap: 5px; }
+  .policy-card { background: #fff; border: 1px solid var(--slate-200); border-radius: 12px; padding: 14px; }
+  .policy-card h4 { font-size: 12px; font-weight: 700; color: var(--slate-800); display: flex; align-items: center; gap: 6px; margin-bottom: 10px; }
+  .policy-card ul { list-style: none; display: flex; flex-direction: column; gap: 4px; }
+  .policy-card li { font-size: 11px; color: var(--slate-600); line-height: 1.5; }
+  .policy-card li::before { content: "•"; margin-right: 6px; color: var(--slate-400); }
+  .subsection-label { font-size: 11px; font-weight: 700; color: var(--indigo); text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 10px; display: block; }
+  @media (max-width: 1200px) { .right-panel { display: none; } .result-column { width: 360px; } }
+  @media (max-width: 900px) { .result-column { display: none; } }
+  @media (max-width: 700px) { .sidebar { display: none; } .grid-3 { grid-template-columns: 1fr 1fr; } .grid-2 { grid-template-columns: 1fr; } .grid-2r { grid-template-columns: 1fr; } .form-column { padding: 16px; } }
+</style>
+{% endblock %}
+
+{% block content %}
+
+<!-- ═══ LOADING OVERLAY ═══ -->
+<div class="loading-overlay" id="loading-overlay">
+  <div class="loading-card">
+    <div class="spinner"></div>
+    <h3>Crafting your itinerary…</h3>
+    <p>AI is building the perfect travel plan. This takes 5–15 seconds.</p>
+  </div>
+</div>
+
+<div style="flex: 1; display: flex; flex-direction: column; overflow: hidden;">
+
+  <!-- TABS BAR -->
+  <div class="tabs">
+    <button class="tab-btn {% if not itinerary %}active{% endif %}" onclick="switchTab('create')" id="tab-create">
+      <i class="ti ti-map-pin"></i> Create Itinerary
+    </button>
+    <button class="tab-btn {% if itinerary %}active{% endif %}" onclick="switchTab('result')" id="tab-result" {% if not itinerary and not error %}style="display:none"{% endif %}>
+      <i class="ti ti-file-check"></i> Generated Result
+    </button>
+  </div>
+
+  <!-- ═══ CREATE TAB ═══ -->
+  <div id="view-create" class="layout-split" style="flex:1;overflow:hidden; {% if itinerary or error %}display:none{% endif %}">
+
+    <!-- FORM COLUMN -->
+    <div class="form-column">
+      <form method="POST" id="itinerary-form" action="">
+        {% csrf_token %}
+
+        <!-- Validation Errors from Django -->
+        {% if validation_errors %}
+        <div class="error-banner">
+          <div class="error-banner-header">
+            <i class="ti ti-alert-triangle"></i> Please fix the following:
+          </div>
+          <ul>
+            {% for err in validation_errors %}
+            <li>{{ err }}</li>
+            {% endfor %}
+          </ul>
+        </div>
+        {% endif %}
+
+        <!-- Day-wise Itinerary -->
+        <div>
+          <div class="section-title">
+            <i class="ti ti-calendar-event" style="color:var(--green)"></i>
+            Day-wise Itinerary
+            <span class="badge" id="day-badge">1 Day</span>
+          </div>
+
+          <div id="days-container">
+            {# The view passes `restored_days` — a list of dicts [{day, activity, stay}, …] #}
+            {# Always at least Day 1; extra days are restored server-side after a validation error. #}
+            {% for day in restored_days %}
+            <div class="day-card" data-day="{{ day.day }}">
+              <div class="day-card-header">
+                <span class="day-label"><i class="ti ti-sun"></i> Day {{ day.day }}</span>
+                {% if not forloop.first %}
+                <button type="button" class="remove-btn" onclick="removeDay(this)">
+                  <i class="ti ti-trash"></i> Remove
+                </button>
+                {% endif %}
+              </div>
+              <div class="grid-2r">
+                <input type="text" class="field" name="activity_{{ day.day }}"
+                  placeholder="Sightseeing / Activities for this day"
+                  value="{{ day.activity }}" />
+                <input type="text" class="field" name="stay_{{ day.day }}"
+                  placeholder="Night Stay — Hotel / City"
+                  value="{{ day.stay }}" />
+              </div>
+            </div>
+            {% endfor %}
+          </div>
+
+          <button type="button" class="add-day-btn" onclick="addDay()">
+            <i class="ti ti-plus"></i> Add Day
+          </button>
+        </div>
+
+        <!-- Arrival Details -->
+        <div style="margin-bottom:24px">
+          <div class="section-title">
+            <i class="ti ti-plane-arrival" style="color:var(--blue)"></i>
+            Arrival Details
+          </div>
+          <span class="subsection-label">Arrival</span>
+          <div class="grid-3">
+            <input type="text" class="field" name="arrival_city"
+              placeholder="Arrival City *"
+              value="{{ form_data.arrival_city|default:'' }}" />
+            <input type="date" class="field" name="arrival_date"
+              value="{{ form_data.arrival_date|default:'' }}" />
+            <input type="time" class="field" name="arrival_time"
+              value="{{ form_data.arrival_time|default:'' }}" />
+          </div>
+        </div>
+
+        <!-- Drop Details -->
+        <div style="margin-bottom:24px">
+          <div class="section-title">
+            <i class="ti ti-plane-departure" style="color:var(--indigo)"></i>
+            Drop Details
+          </div>
+          <span class="subsection-label">Drop-off</span>
+          <div class="grid-3">
+            <input type="text" class="field" name="drop_city"
+              placeholder="Drop City (leave blank = same as arrival)"
+              value="{{ form_data.drop_city|default:'' }}" />
+            <input type="date" class="field" name="drop_date"
+              value="{{ form_data.drop_date|default:'' }}" />
+            <input type="time" class="field" name="drop_time"
+              value="{{ form_data.drop_time|default:'' }}" />
+          </div>
+        </div>
+
+        <!-- Guests -->
+        <div style="margin-bottom:24px">
+          <div class="section-title">
+            <i class="ti ti-users" style="color:var(--purple)"></i>
+            Guests
+          </div>
+          <div class="grid-3">
+            <input type="number" class="field" name="adults"
+              placeholder="No. of Adults *" min="1"
+              value="{{ form_data.adults|default:'' }}" />
+            <input type="number" class="field" name="children"
+              placeholder="No. of Children" min="0"
+              value="{{ form_data.children|default:'' }}" />
+            <input type="text" class="field" name="child_ages"
+              placeholder="Child Ages (e.g. 5, 8, 12)"
+              value="{{ form_data.child_ages|default:'' }}" />
+          </div>
+        </div>
+
+        <!-- Accommodation -->
+        <div style="margin-bottom:24px">
+          <div class="section-title">
+            <i class="ti ti-building" style="color:var(--cyan)"></i>
+            Accommodation
+          </div>
+          <div class="grid-3">
+            <select class="field" name="hotel_category">
+              <option value="">Hotel Category *</option>
+              <option {% if form_data.hotel_category == "Budget Hotel" %}selected{% endif %}>Budget Hotel</option>
+              <option {% if form_data.hotel_category == "3 Star" %}selected{% endif %}>3 Star</option>
+              <option {% if form_data.hotel_category == "4 Star" %}selected{% endif %}>4 Star</option>
+              <option {% if form_data.hotel_category == "5 Star" %}selected{% endif %}>5 Star</option>
+              <option {% if form_data.hotel_category == "Heritage" %}selected{% endif %}>Heritage</option>
+              <option {% if form_data.hotel_category == "Resort" %}selected{% endif %}>Resort</option>
+            </select>
+            <input type="number" class="field" name="rooms"
+              placeholder="No. of Rooms" min="1"
+              value="{{ form_data.rooms|default:'' }}" />
+            <select class="field" name="sharing">
+              <option value="">Room Sharing</option>
+              <option {% if form_data.sharing == "Single" %}selected{% endif %}>Single</option>
+              <option {% if form_data.sharing == "Double" %}selected{% endif %}>Double</option>
+              <option {% if form_data.sharing == "Triple" %}selected{% endif %}>Triple</option>
+              <option {% if form_data.sharing == "4 Bed" %}selected{% endif %}>4 Bed</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Transport & Meals -->
+        <div style="margin-bottom:24px">
+          <div class="section-title">
+            <i class="ti ti-car" style="color:var(--amber)"></i>
+            Transport &amp; Meals
+          </div>
+          <div class="grid-2">
+            <select class="field" name="meal_plan">
+              <option value="">Meal Plan *</option>
+              <option {% if form_data.meal_plan == "No Meal (EP)" %}selected{% endif %}>No Meal (EP)</option>
+              <option {% if form_data.meal_plan == "Breakfast Only (CP)" %}selected{% endif %}>Breakfast Only (CP)</option>
+              <option {% if form_data.meal_plan == "Breakfast & Dinner (MAP)" %}selected{% endif %}>Breakfast &amp; Dinner (MAP)</option>
+              <option {% if form_data.meal_plan == "All Meals (AP)" %}selected{% endif %}>All Meals (AP)</option>
+            </select>
+            <select class="field" name="vehicle_type">
+              <option value="">Vehicle Type *</option>
+              <option {% if form_data.vehicle_type == "Sedan" %}selected{% endif %}>Sedan</option>
+              <option {% if form_data.vehicle_type == "SUV (Innova)" %}selected{% endif %}>SUV (Innova)</option>
+              <option {% if form_data.vehicle_type == "Tempo Traveller" %}selected{% endif %}>Tempo Traveller</option>
+              <option {% if form_data.vehicle_type == "Mini Bus" %}selected{% endif %}>Mini Bus</option>
+              <option {% if form_data.vehicle_type == "Bus" %}selected{% endif %}>Bus</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Notes -->
+        <div style="margin-bottom:24px">
+          <div class="section-title">
+            <i class="ti ti-notes" style="color:var(--amber)"></i>
+            Additional Notes / Special Requests
+          </div>
+          <textarea class="field" name="notes" rows="3"
+            placeholder="E.g. client wants vegetarian meals only, anniversary celebration, wheelchair accessibility needed…"
+            style="resize:vertical">{{ form_data.notes|default:'' }}</textarea>
+        </div>
+
+        <!-- Generate Button -->
+        <div style="padding-bottom:32px">
+          <button type="submit" class="generate-btn" id="generate-btn">
+            <i class="ti ti-wand"></i> Generate Itinerary
+          </button>
+          <p class="generate-hint">Powered by DeepSeek AI — generation takes 5–15 seconds</p>
+        </div>
+
+      </form>
+    </div>
+    <!-- /form-column -->
+
+    <!-- RESULT COLUMN — shows last generated if available in this session -->
+    <div class="result-column">
+      <div class="result-header">
+        <div class="result-header-left">
+          <i class="ti ti-file-text" style="font-size:18px"></i> Generated Package
+        </div>
+      </div>
+      <div class="result-content">
+        <div class="placeholder-box">
+          <div class="placeholder-icon"><i class="ti ti-map-2"></i></div>
+          <h3>Ready to Generate</h3>
+          <p>Fill in the trip parameters on the left and click Generate to create a professional itinerary.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- RIGHT POLICIES PANEL -->
+    <div class="right-panel">
+      <div class="policy-card">
+        <h4><i class="ti ti-circle-check" style="color:var(--green)"></i> Inclusions</h4>
+        <ul>
+          <li>Well appointed rooms in mentioned hotels</li>
+          <li>Daily breakfast in hotels</li>
+          <li>A/C vehicle for all transfers &amp; sightseeing</li>
+          <li>Driver allowance, toll &amp; parking</li>
+          <li>All applicable hotel taxes</li>
+        </ul>
+      </div>
+      <div class="policy-card">
+        <h4><i class="ti ti-circle-x" style="color:var(--red)"></i> Exclusions</h4>
+        <ul>
+          <li>Meals other than those mentioned</li>
+          <li>Transport not in itinerary</li>
+          <li>Entrance fees &amp; boating charges</li>
+          <li>Portage, tips, personal expenses</li>
+          <li>Airfare / Train fare</li>
+          <li>GST @ 5%</li>
+        </ul>
+      </div>
+      <div class="policy-card">
+        <h4><i class="ti ti-credit-card" style="color:var(--blue)"></i> Payment Policy</h4>
+        <ul>
+          <li>20% advance at booking</li>
+          <li>20% after hotel voucher</li>
+          <li>60% during tour in parts</li>
+          <li>Peak season (15 Dec–2 Jan): 50% advance</li>
+        </ul>
+      </div>
+      <div class="policy-card">
+        <h4><i class="ti ti-ban" style="color:var(--amber)"></i> Cancellation Policy</h4>
+        <ul>
+          <li>Min. ₹3,000 per person</li>
+          <li>45–30 days: 25%</li>
+          <li>30–15 days: 50%</li>
+          <li>15–5 days: 75%</li>
+          <li>Within 5 days / no-show: 100%</li>
+        </ul>
+      </div>
+      <div class="policy-card">
+        <h4><i class="ti ti-child" style="color:var(--purple)"></i> Child Policy</h4>
+        <ul>
+          <li>Up to 6 yrs: Free</li>
+          <li>6–8 yrs: Half charge</li>
+          <li>Above 8 yrs: Full charge</li>
+        </ul>
+      </div>
+      <div class="policy-card">
+        <h4><i class="ti ti-building" style="color:var(--indigo)"></i> Hotel Policy</h4>
+        <ul>
+          <li>Check-in: 12:00 PM</li>
+          <li>Check-out: 11:00 AM</li>
+          <li>Early / late subject to availability</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+  <!-- /view-create -->
+
+  <!-- ═══ RESULT TAB ═══ -->
+  <div id="view-result" style="{% if not itinerary and not error %}display:none{% else %}display:flex{% endif %}; flex:1; overflow:hidden;">
+
+    <div class="form-column" style="max-width:900px;">
+
+      {% if error %}
+      <!-- Error State -->
+      <div class="error-banner" style="margin-top:8px">
+        <div class="error-banner-header">
+          <i class="ti ti-alert-circle"></i> Generation Failed
+        </div>
+        <p style="font-size:13px;color:#dc2626;margin-top:4px">{{ error }}</p>
+      </div>
+      <button class="generate-btn" style="margin-top:16px;max-width:240px"
+        onclick="switchTab('create')">
+        <i class="ti ti-arrow-left"></i> Back to Form
+      </button>
+
+      {% elif itinerary %}
+      <!-- Success State -->
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px">
+        <div>
+          <div class="success-badge">
+            <i class="ti ti-circle-check"></i> Saved to Database
+          </div>
+          <h2 style="font-size:20px;font-weight:800;color:var(--slate-800);margin-top:6px">
+            {{ trip_meta.arrival_city }}{% if trip_meta.drop_city and trip_meta.drop_city != trip_meta.arrival_city %} → {{ trip_meta.drop_city }}{% endif %}
+          </h2>
+          <p style="font-size:13px;color:var(--slate-400);margin-top:2px">
+            {{ trip_meta.total_days }} Day{{ trip_meta.total_days|pluralize }} &nbsp;·&nbsp; Generated just now
+          </p>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button class="copy-btn" id="copy-btn" onclick="copyItinerary()">
+            <i class="ti ti-copy"></i> Copy Text
+          </button>
+          <button class="copy-btn" onclick="switchTab('create')"
+            style="background:var(--green-light);border-color:#86efac;color:var(--green)">
+            <i class="ti ti-plus"></i> New Itinerary
+          </button>
+        </div>
+      </div>
+
+      <!-- Meta Chips -->
+      <div class="itinerary-meta">
+        <span class="meta-chip"><i class="ti ti-users" style="color:var(--purple)"></i> {{ trip_meta.adults }} Adult{{ trip_meta.adults|pluralize }}{% if trip_meta.children != "0" %}, {{ trip_meta.children }} Child{% endif %}</span>
+        <span class="meta-chip"><i class="ti ti-building" style="color:var(--cyan)"></i> {{ trip_meta.hotel_category }}</span>
+        <span class="meta-chip"><i class="ti ti-car" style="color:var(--amber)"></i> {{ trip_meta.vehicle_type }}</span>
+        <span class="meta-chip"><i class="ti ti-salad" style="color:var(--green)"></i> {{ trip_meta.meal_plan }}</span>
+        {% if trip_meta.arrival_date %}<span class="meta-chip"><i class="ti ti-calendar" style="color:var(--blue)"></i> {{ trip_meta.arrival_date }}{% if trip_meta.drop_date %} → {{ trip_meta.drop_date }}{% endif %}</span>{% endif %}
+      </div>
+
+      <!-- Itinerary Text -->
+      <div class="itinerary-result">
+        <pre class="result-pre" id="itinerary-text">{{ itinerary }}</pre>
+      </div>
+      {% endif %}
+
+    </div>
+
+    <!-- Right Policies Panel (reused) -->
+    <div class="right-panel">
+      <div class="policy-card">
+        <h4><i class="ti ti-circle-check" style="color:var(--green)"></i> Inclusions</h4>
+        <ul>
+          <li>Well appointed rooms in mentioned hotels</li>
+          <li>Daily breakfast in hotels</li>
+          <li>A/C vehicle for all transfers &amp; sightseeing</li>
+          <li>Driver allowance, toll &amp; parking</li>
+          <li>All applicable hotel taxes</li>
+        </ul>
+      </div>
+      <div class="policy-card">
+        <h4><i class="ti ti-circle-x" style="color:var(--red)"></i> Exclusions</h4>
+        <ul>
+          <li>Meals other than those mentioned</li>
+          <li>Transport not in itinerary</li>
+          <li>Entrance fees &amp; boating charges</li>
+          <li>Portage, tips, personal expenses</li>
+          <li>Airfare / Train fare</li>
+          <li>GST @ 5%</li>
+        </ul>
+      </div>
+      <div class="policy-card">
+        <h4><i class="ti ti-credit-card" style="color:var(--blue)"></i> Payment Policy</h4>
+        <ul>
+          <li>20% advance at booking</li>
+          <li>20% after hotel voucher</li>
+          <li>60% during tour in parts</li>
+          <li>Peak season (15 Dec–2 Jan): 50% advance</li>
+        </ul>
+      </div>
+      <div class="policy-card">
+        <h4><i class="ti ti-ban" style="color:var(--amber)"></i> Cancellation Policy</h4>
+        <ul>
+          <li>Min. ₹3,000 per person</li>
+          <li>45–30 days: 25%</li>
+          <li>30–15 days: 50%</li>
+          <li>15–5 days: 75%</li>
+          <li>Within 5 days / no-show: 100%</li>
+        </ul>
+      </div>
+      <div class="policy-card">
+        <h4><i class="ti ti-child" style="color:var(--purple)"></i> Child Policy</h4>
+        <ul>
+          <li>Up to 6 yrs: Free</li>
+          <li>6–8 yrs: Half charge</li>
+          <li>Above 8 yrs: Full charge</li>
+        </ul>
+      </div>
+      <div class="policy-card">
+        <h4><i class="ti ti-building" style="color:var(--indigo)"></i> Hotel Policy</h4>
+        <ul>
+          <li>Check-in: 12:00 PM</li>
+          <li>Check-out: 11:00 AM</li>
+          <li>Early / late subject to availability</li>
+        </ul>
+      </div>
+    </div>
+
+  </div>
+  <!-- /view-result -->
+
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+  // ── Tab switching ──────────────────────────────────────
+  function switchTab(tab) {
+    document.getElementById('tab-create').classList.toggle('active', tab === 'create');
+    document.getElementById('tab-result').classList.toggle('active', tab === 'result');
+    document.getElementById('view-create').style.display = tab === 'create' ? 'flex' : 'none';
+    document.getElementById('view-result').style.display = tab === 'result' ? 'flex' : 'none';
+  }
+
+  // ── Show result tab if itinerary/error is present ──────
+  {% if itinerary or error %}
+  document.addEventListener('DOMContentLoaded', function() {
+    document.getElementById('tab-result').style.display = 'flex';
+    switchTab('result');
+  });
+  {% endif %}
+
+  // ── Dynamic day cards ──────────────────────────────────
+  let dayCount = document.querySelectorAll('.day-card').length || 1;
+
+  function addDay() {
+    dayCount++;
+    const container = document.getElementById('days-container');
+    const div = document.createElement('div');
+    div.className = 'day-card';
+    div.setAttribute('data-day', dayCount);
+    div.innerHTML = `
+      <div class="day-card-header">
+        <span class="day-label"><i class="ti ti-sun"></i> Day ${dayCount}</span>
+        <button type="button" class="remove-btn" onclick="removeDay(this)">
+          <i class="ti ti-trash"></i> Remove
+        </button>
+      </div>
+      <div class="grid-2r">
+        <input type="text" class="field" name="activity_${dayCount}" placeholder="Sightseeing / Activities for this day">
+        <input type="text" class="field" name="stay_${dayCount}" placeholder="Night Stay — Hotel / City">
+      </div>`;
+    container.appendChild(div);
+    updateDayBadge();
+    div.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+
+  function removeDay(btn) {
+    btn.closest('.day-card').remove();
+    const cards = document.querySelectorAll('.day-card');
+    dayCount = cards.length;
+    cards.forEach((c, i) => {
+      const n = i + 1;
+      c.setAttribute('data-day', n);
+      const label = c.querySelector('.day-label');
+      if (label) label.innerHTML = `<i class="ti ti-sun"></i> Day ${n}`;
+      const inputs = c.querySelectorAll('input[type=text]');
+      if (inputs[0]) inputs[0].name = `activity_${n}`;
+      if (inputs[1]) inputs[1].name = `stay_${n}`;
+    });
+    updateDayBadge();
+  }
+
+  function updateDayBadge() {
+    const badge = document.getElementById('day-badge');
+    if (badge) badge.textContent = dayCount + (dayCount !== 1 ? ' Days' : ' Day');
+  }
+
+  // ── Form submit → show loading overlay ────────────────
+  document.getElementById('itinerary-form')?.addEventListener('submit', function() {
+    document.getElementById('loading-overlay').classList.add('active');
+    document.getElementById('generate-btn').disabled = true;
+    document.getElementById('generate-btn').innerHTML =
+      '<i class="ti ti-loader" style="animation:spin .8s linear infinite"></i> Generating…';
+  });
+
+  // ── Copy itinerary text ────────────────────────────────
+  async function copyItinerary() {
+    const el = document.getElementById('itinerary-text');
+    if (!el) return;
+    try {
+      await navigator.clipboard.writeText(el.textContent);
+      const btn = document.getElementById('copy-btn');
+      btn.innerHTML = '<i class="ti ti-check"></i> Copied!';
+      btn.classList.add('copied');
+      setTimeout(() => {
+        btn.innerHTML = '<i class="ti ti-copy"></i> Copy Text';
+        btn.classList.remove('copied');
+      }, 2000);
+    } catch(e) {}
+  }
+
+  // Init badge
+  updateDayBadge();
+</script>
+{% endblock %}

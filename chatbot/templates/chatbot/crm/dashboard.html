@@ -1,0 +1,952 @@
+{% extends "chatbot/crm/base.html" %}
+{% load static %}
+{% load tz %}
+
+{% block title %}Messaging — TrypBot CRM{% endblock %}
+
+{% block extra_head %}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<style>
+/* ── Shell ── */
+html, body { height: 100%; overflow: hidden; }
+
+#messagingShell {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  overflow-y: auto;
+  background: #f9fafb;
+}
+
+/* ── Bulk rows ── */
+.bulk-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-bottom: 1px solid #f3f4f6;
+}
+.bulk-row:hover { background: #f9fafb; }
+#bulkLeadsList, #csvLeadsList { max-height: 280px; overflow-y: auto; }
+
+/* ── CSV drop zone ── */
+#csvDropZone {
+  border: 2px dashed #d1d5db;
+  border-radius: 12px;
+  padding: 24px;
+  text-align: center;
+  cursor: pointer;
+  transition: .2s;
+}
+#csvDropZone.dragover { border-color: #25D366; background: #f0fdf4; }
+
+/* ── Tab buttons (bulk) ── */
+.tab-btn {
+  padding: 10px 16px;
+  font-size: 14px;
+  font-weight: 600;
+  border-bottom: 2px solid transparent;
+  color: #6b7280;
+  transition: .15s;
+  background: none;
+  border-top: none; border-left: none; border-right: none;
+  cursor: pointer;
+}
+.tab-btn.active { border-bottom-color: #25D366; color: #25D366; }
+
+/* ── Card ── */
+.card {
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 16px;
+  box-shadow: 0 1px 3px rgba(0,0,0,.04);
+}
+
+/* ══════════════════════════════════════════════════════
+   DAY-WISE DASHBOARD
+══════════════════════════════════════════════════════ */
+
+/* Section card */
+.dw-card {
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 16px;
+  box-shadow: 0 1px 3px rgba(0,0,0,.04);
+  overflow: hidden;
+}
+
+/* Header strip */
+.dw-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 14px 18px;
+  border-bottom: 1px solid #f3f4f6;
+  background: linear-gradient(135deg, #f0fdf4 0%, #fff 60%);
+}
+.dw-header-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: #1f2937;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.dw-header-title i { color: #25D366; font-size: 15px; }
+
+/* Date range row */
+.dw-date-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.dw-date-row input[type=date] {
+  font-size: 11px;
+  padding: 5px 8px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background: #fff;
+  color: #374151;
+  outline: none;
+}
+.dw-date-row input[type=date]:focus { border-color: #25D366; box-shadow: 0 0 0 2px rgba(37,211,102,.15); }
+.dw-apply-btn {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 5px 12px;
+  border-radius: 8px;
+  background: #25D366;
+  color: #fff;
+  border: none;
+  cursor: pointer;
+  transition: background .15s;
+}
+.dw-apply-btn:hover { background: #128C7E; }
+
+/* ── KPI grid ── */
+.dw-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(90px, 1fr));
+  gap: 10px;
+  padding: 14px 18px;
+  border-bottom: 1px solid #f3f4f6;
+  background: #fafafa;
+}
+.dw-kpi {
+  border-radius: 12px;
+  padding: 10px 8px;
+  text-align: center;
+  border: 1px solid transparent;
+  transition: transform .15s, box-shadow .15s;
+}
+.dw-kpi:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,.08); }
+.dw-kpi-icon { font-size: 13px; margin-bottom: 4px; }
+.dw-kpi-label { font-size: 10px; font-weight: 700; letter-spacing: .03em; margin-bottom: 4px; }
+.dw-kpi-val   { font-size: 22px; font-weight: 800; line-height: 1; }
+.dw-kpi-trend { font-size: 9px; margin-top: 3px; min-height: 12px; opacity: .85; }
+
+/* Fixed-color KPI tiles */
+.dw-kpi-new  { background: #eff6ff; border-color: #bfdbfe; }
+.dw-kpi-new  .dw-kpi-icon, .dw-kpi-new  .dw-kpi-label { color: #1d4ed8; }
+.dw-kpi-new  .dw-kpi-val  { color: #2563eb; }
+
+.dw-kpi-hot  { background: #fef2f2; border-color: #fecaca; }
+.dw-kpi-hot  .dw-kpi-icon, .dw-kpi-hot  .dw-kpi-label { color: #b91c1c; }
+.dw-kpi-hot  .dw-kpi-val  { color: #dc2626; }
+
+.dw-kpi-paid { background: #f0fdf4; border-color: #bbf7d0; }
+.dw-kpi-paid .dw-kpi-icon, .dw-kpi-paid .dw-kpi-label { color: #15803d; }
+.dw-kpi-paid .dw-kpi-val  { color: #16a34a; }
+
+.dw-kpi-open { background: #fffbeb; border-color: #fde68a; }
+.dw-kpi-open .dw-kpi-icon, .dw-kpi-open .dw-kpi-label { color: #92400e; }
+.dw-kpi-open .dw-kpi-val  { color: #d97706; }
+
+/* Dynamic label tiles (color set inline via JS) */
+.dw-kpi-label-tile { /* filled by JS */ }
+
+/* ── Label chips row ── */
+.dw-label-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 10px 18px;
+  border-bottom: 1px solid #f3f4f6;
+  background: #fff;
+  min-height: 0;
+}
+.dw-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border-radius: 20px;
+  padding: 3px 10px;
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.dw-chip-dot {
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+/* ── Tab bar ── */
+.dw-tab-bar {
+  display: flex;
+  gap: 0;
+  padding: 0 18px;
+  border-bottom: 1px solid #f3f4f6;
+  background: #fff;
+}
+.dw-tab-btn {
+  padding: 9px 14px;
+  font-size: 11px;
+  font-weight: 700;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: #9ca3af;
+  background: none;
+  cursor: pointer;
+  transition: .15s;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.dw-tab-btn.active { border-bottom-color: #25D366; color: #25D366; }
+
+/* ── TABLE ── */
+.dw-table-wrap { overflow-x: auto; padding: 0; }
+.dw-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11.5px;
+}
+.dw-table th {
+  font-size: 9.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  color: #9ca3af;
+  padding: 8px 12px;
+  border-bottom: 1px solid #f3f4f6;
+  text-align: left;
+  background: #fafafa;
+  white-space: nowrap;
+}
+.dw-table th.center { text-align: center; }
+.dw-table td {
+  padding: 8px 12px;
+  border-bottom: 1px solid #f9fafb;
+  vertical-align: middle;
+}
+.dw-table tr:last-child td { border-bottom: none; }
+.dw-table tbody tr:hover td { background: #f9fafb; }
+
+/* Badges */
+.dw-badge {
+  display: inline-block;
+  border-radius: 6px;
+  padding: 2px 8px;
+  font-size: 11px;
+  font-weight: 700;
+}
+.dw-badge-new  { background: #eff6ff; color: #1d4ed8; }
+.dw-badge-hot  { background: #fef2f2; color: #b91c1c; }
+.dw-badge-paid { background: #f0fdf4; color: #15803d; }
+.dw-badge-open { background: #fffbeb; color: #92400e; }
+
+/* Volume bar */
+.bar-bg   { flex: 1; height: 5px; border-radius: 3px; background: #f3f4f6; overflow: hidden; min-width: 36px; }
+.bar-fill { height: 100%; border-radius: 3px; background: #3b82f6; }
+
+/* Chart wrap */
+.dw-chart-wrap { padding: 14px 18px; }
+
+/* Loading / empty states */
+.dw-state {
+  text-align: center;
+  padding: 2rem 1rem;
+  color: #d1d5db;
+  font-size: 12px;
+}
+.dw-state i { font-size: 24px; display: block; margin-bottom: 6px; }
+
+@keyframes spin { to { transform: rotate(360deg); } }
+.fa-spin { animation: spin 1s linear infinite; }
+</style>
+{% endblock %}
+
+{% block content %}
+
+<div id="messagingShell">
+
+  <!-- ══════════════════════════════════════════════════════
+       PAGE HEADER
+  ══════════════════════════════════════════════════════ -->
+  <div class="flex items-center justify-between px-4 sm:px-6 py-4 bg-white border-b border-gray-200 flex-shrink-0">
+    <div>
+      <h1 class="text-lg sm:text-xl font-bold text-gray-800">
+        <i class="fa-solid fa-paper-plane text-[#25D366] mr-2"></i>Messaging
+      </h1>
+      <p class="text-xs text-gray-400 mt-0.5">Send a new WhatsApp message, or message many contacts at once</p>
+    </div>
+    <a href="{% url 'crm_chat_home' %}" class="text-xs sm:text-sm font-semibold text-[#25D366] hover:underline flex items-center gap-1">
+      <i class="fa-solid fa-comments"></i> Go to Chats
+    </a>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════
+       TOP STATS BAR
+  ══════════════════════════════════════════════════════ -->
+  <div class="grid grid-cols-3 gap-3 p-4 border-b border-gray-200 bg-white flex-shrink-0">
+    <div class="text-center">
+      <div class="text-xl sm:text-2xl font-bold text-gray-800">{{ stats.total_leads }}</div>
+      <div class="text-xs text-gray-400 mt-0.5">Total Leads</div>
+    </div>
+    <div class="text-center border-x border-gray-100">
+      <div class="text-xl sm:text-2xl font-bold text-[#25D366]">{{ stats.open_leads }}</div>
+      <div class="text-xs text-gray-400 mt-0.5">Open</div>
+    </div>
+    <div class="text-center">
+      <div class="text-xl sm:text-2xl font-bold text-red-500">{{ stats.hot_leads }}</div>
+      <div class="text-xs text-gray-400 mt-0.5">Hot</div>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════
+       SCROLLABLE BODY
+  ══════════════════════════════════════════════════════ -->
+  <div class="flex-1 overflow-y-auto px-4 sm:px-6 py-5">
+    <div class="max-w-3xl mx-auto flex flex-col gap-6">
+
+      <!-- ══════════════════════════════════════════════════
+           NEW CONVERSATION CARD
+      ══════════════════════════════════════════════════ -->
+      <div class="card p-4 sm:p-5">
+        <div class="flex items-center gap-2 mb-4">
+          <div class="w-8 h-8 rounded-full bg-[#25D366] flex items-center justify-center">
+            <i class="fa-brands fa-whatsapp text-white text-sm"></i>
+          </div>
+          <h2 class="font-bold text-gray-800 text-base">New Conversation</h2>
+        </div>
+
+        <div class="space-y-3">
+          <div>
+            <label class="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1 block">
+              WhatsApp Number <span class="text-red-500">*</span>
+            </label>
+            <div class="flex">
+              <span class="inline-flex items-center px-3 rounded-l-xl border border-r-0 border-gray-200 bg-gray-50 text-gray-500 text-sm font-mono">+91</span>
+              <input id="newChatPhone" type="tel" placeholder="9876543210"
+                class="flex-1 border border-gray-200 rounded-r-xl px-3 py-2.5 text-sm outline-none
+                       focus:border-[#25D366] focus:ring-2 focus:ring-[#25D366]/20 font-mono" />
+            </div>
+            <p class="text-[11px] text-gray-400 mt-1">Include country code — e.g. 91 for India</p>
+          </div>
+
+          <div>
+            <label class="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1 block">
+              Contact Name <span class="text-gray-400 font-normal">(optional)</span>
+            </label>
+            <input id="newChatName" type="text" placeholder="e.g. Rahul Sharma"
+              class="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm outline-none
+                     focus:border-[#25D366] focus:ring-2 focus:ring-[#25D366]/20" />
+          </div>
+
+          <div>
+            <label class="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1 block">
+              Message Type
+            </label>
+            <div class="flex gap-3">
+              <label class="flex items-center gap-2 cursor-pointer">
+                <input type="radio" name="messageType" value="normal" checked
+                       onchange="toggleMessageType()"
+                       class="w-4 h-4 text-[#25D366] border-gray-300 focus:ring-[#25D366]">
+                <span class="text-sm text-gray-700">Normal Message</span>
+              </label>
+              <label class="flex items-center gap-2 cursor-pointer">
+                <input type="radio" name="messageType" value="template"
+                       onchange="toggleMessageType()"
+                       class="w-4 h-4 text-[#25D366] border-gray-300 focus:ring-[#25D366]">
+                <span class="text-sm text-gray-700">Template Message</span>
+              </label>
+            </div>
+          </div>
+
+          <div id="normalMessageInput">
+            <label class="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1 block">
+              First Message <span class="text-red-500">*</span>
+            </label>
+            <textarea id="newChatMsg" rows="3" placeholder="Type your opening message..."
+              class="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm outline-none resize-none
+                     focus:border-[#25D366] focus:ring-2 focus:ring-[#25D366]/20"></textarea>
+          </div>
+
+          <div id="templateMessageInput" class="hidden">
+            <label class="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1 block">
+              Select Template <span class="text-red-500">*</span>
+            </label>
+            <select id="newChatTemplate"
+              class="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm outline-none
+                     focus:border-[#25D366] focus:ring-2 focus:ring-[#25D366]/20">
+              <option value="">-- Select a template --</option>
+              {% for template in templates %}
+              <option value="{{ template.id }}" data-text="{{ template.template_text }}">{{ template.title }}</option>
+              {% endfor %}
+            </select>
+            <p class="text-[11px] text-gray-400 mt-1">Template messages can be sent to new numbers</p>
+          </div>
+
+          <div id="newChatError" class="hidden text-xs text-red-500 bg-red-50 border border-red-200 rounded-xl px-3 py-2"></div>
+
+          <div class="pt-1">
+            <button id="newChatSendBtn" onclick="sendNewChat()"
+              class="w-full sm:w-auto px-6 py-2.5 bg-[#25D366] hover:bg-[#128C7E] text-white font-bold text-sm rounded-xl
+                     transition flex items-center justify-center gap-2 disabled:opacity-60">
+              <i class="fa-brands fa-whatsapp"></i>
+              <span id="newChatBtnLabel">Send Message</span>
+            </button>
+          </div>
+        </div>
+      </div>
+      <!-- END NEW CONVERSATION CARD -->
+
+
+      <!-- ══════════════════════════════════════════════════
+           BULK MESSAGE CARD
+      ══════════════════════════════════════════════════ -->
+      <div class="card p-4 sm:p-5">
+        <div class="flex items-center gap-2 mb-4">
+          <div class="w-8 h-8 rounded-full bg-blue-500 flex items-center justify-center">
+            <i class="fa-solid fa-bullhorn text-white text-sm"></i>
+          </div>
+          <h2 class="font-bold text-gray-800 text-base">Bulk Message</h2>
+        </div>
+
+        <div class="flex gap-2 mb-4 border-b border-gray-100">
+          <button id="bulkTabCrm" onclick="switchBulkTab('crm')" class="tab-btn active">
+            From CRM Leads
+          </button>
+          <button id="bulkTabCsv" onclick="switchBulkTab('csv')" class="tab-btn">
+            Upload CSV
+          </button>
+        </div>
+
+        <!-- CRM leads -->
+        <div id="bulkCrmContent">
+          <div class="flex flex-wrap items-center justify-between gap-2 mb-2">
+            <div class="flex items-center gap-3">
+              <label class="flex items-center gap-1.5 text-sm text-gray-600 cursor-pointer">
+                <input type="checkbox" id="selectAllLeads" onchange="toggleSelectAllLeads(this)" class="w-4 h-4 accent-[#25D366]">
+                Select All
+              </label>
+              <span class="text-xs text-gray-400" id="selectedCountLabel">0 selected</span>
+            </div>
+            <input type="text" id="bulkSearchInput" placeholder="Search leads…" oninput="filterBulkLeads(this.value)"
+              class="border border-gray-200 rounded-lg px-3 py-1.5 text-xs outline-none focus:border-[#25D366] focus:ring-1 focus:ring-[#25D366]/20" />
+          </div>
+          <div id="bulkLeadsList" class="border border-gray-200 rounded-xl divide-y divide-gray-50"></div>
+        </div>
+
+        <!-- CSV tab -->
+        <div id="bulkCsvContent" class="hidden">
+          <div id="csvDropZone" onclick="document.getElementById('csvFileInput').click()">
+            <input type="file" id="csvFileInput" accept=".csv" class="hidden" onchange="handleCsvFile(this.files[0])">
+            <i class="fa-solid fa-file-csv text-3xl text-gray-300 mb-2"></i>
+            <p class="text-sm text-gray-500 font-medium">Click to upload CSV</p>
+            <p class="text-xs text-gray-400 mt-1">Columns required: <span class="font-mono">phone</span> (and optional <span class="font-mono">name</span>)</p>
+            <p class="text-xs text-amber-600 mt-1 font-semibold">Maximum 100 rows per CSV</p>
+          </div>
+          <div id="csvPreview" class="mt-3 hidden">
+            <div class="flex items-center justify-between mb-2">
+              <span class="text-xs font-semibold text-gray-600">Loaded contacts</span>
+              <span class="text-xs text-gray-400" id="csvCountLabel"></span>
+            </div>
+            <div id="csvLeadsList" class="border border-gray-200 rounded-xl divide-y divide-gray-50"></div>
+          </div>
+        </div>
+
+        <!-- Template -->
+        <div class="mt-4">
+          <label class="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1 block">Template Message</label>
+          <select id="bulkTemplateSelect" onchange="fillBulkTemplate()"
+            class="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm outline-none
+                   focus:border-[#25D366] focus:ring-2 focus:ring-[#25D366]/20 mb-2">
+            <option value="">-- Select a template --</option>
+            {% for template in templates %}
+            <option value="{{ template.id }}" data-text="{{ template.template_text }}">{{ template.title }}</option>
+            {% endfor %}
+          </select>
+          <textarea id="bulkMessage" rows="4"
+            placeholder="Or type your message… Use {{name}} to insert the contact's name"
+            class="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm outline-none resize-none
+                   focus:border-[#25D366] focus:ring-2 focus:ring-[#25D366]/20"></textarea>
+          <p class="text-[11px] text-gray-400 mt-1">Tip: <span class="font-mono">{{name}}</span> will be replaced with each contact's name.</p>
+        </div>
+
+        <!-- Progress -->
+        <div id="bulkProgress" class="hidden mt-3">
+          <div class="flex items-center justify-between text-xs text-gray-500 mb-1">
+            <span id="bulkProgressLabel">Sending…</span>
+            <span id="bulkProgressCount">0 / 0</span>
+          </div>
+          <div class="h-2 bg-gray-100 rounded-full overflow-hidden">
+            <div id="bulkProgressBar" class="h-full bg-[#25D366] transition-all" style="width:0%"></div>
+          </div>
+        </div>
+
+        <div id="bulkError" class="hidden text-xs text-red-500 bg-red-50 border border-red-200 rounded-xl px-3 py-2 mt-3"></div>
+
+        <div class="pt-4">
+          <button id="bulkSendBtn" onclick="sendBulkMessages()"
+            class="w-full sm:w-auto px-6 py-2.5 bg-blue-500 hover:bg-blue-600 text-white font-bold text-sm rounded-xl
+                   transition flex items-center justify-center gap-2 disabled:opacity-60">
+            <i class="fa-solid fa-paper-plane"></i>
+            <span id="bulkSendLabel">Send to Selected</span>
+          </button>
+        </div>
+      </div>
+      <!-- END BULK CARD -->
+
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+
+
+{% block extra_scripts %}
+<script>
+const CSRF_TOKEN      = "{{ csrf_token }}";
+const SEND_TO_NUM_URL = "{% url 'crm_send_to_number' %}";
+const BULK_LEADS_URL  = "{% url 'crm_bulk_leads' %}";
+const DAYWISE_URL     = "{% url 'crm_daywise_stats' %}";
+const CSV_MAX_ROWS    = 100;
+
+/* ════════════════════════════════════════════════════════════
+   BULK MESSAGE VARIABLES
+════════════════════════════════════════════════════════════ */
+let bulkAllLeads   = [];
+let bulkCsvLeads   = [];
+let bulkCurrentTab = 'crm';
+let bulkSending    = false;
+let bulkTemplateId = null;
+
+/* ════════════════════════════════════════════════════════════
+   HELPERS
+════════════════════════════════════════════════════════════ */
+function escHtml(s) {
+  return String(s || '')
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+/** Convert a hex colour to rgba with given alpha */
+function hexAlpha(hex, a) {
+  hex = (hex || '#888888').replace('#', '');
+  if (hex.length === 3) hex = hex.split('').map(c => c + c).join('');
+  const r = parseInt(hex.slice(0, 2), 16);
+  const g = parseInt(hex.slice(2, 4), 16);
+  const b = parseInt(hex.slice(4, 6), 16);
+  return `rgba(${r},${g},${b},${a})`;
+}
+
+/** Lighten hex colour for tile background */
+function hexLight(hex) { return hexAlpha(hex, 0.12); }
+function hexBorder(hex) { return hexAlpha(hex, 0.30); }
+
+/* ════════════════════════════════════════════════════════════
+   NEW CHAT
+════════════════════════════════════════════════════════════ */
+function sendNewChat() {
+  let phone     = document.getElementById('newChatPhone').value.trim().replace(/[\s\-\+]/g, '');
+  if (phone && !phone.startsWith('91')) phone = '91' + phone;
+  const name    = document.getElementById('newChatName').value.trim();
+  const messageType = document.querySelector('input[name="messageType"]:checked').value;
+  const btn     = document.getElementById('newChatSendBtn');
+
+  document.getElementById('newChatError').classList.add('hidden');
+
+  if (!phone) { showNewChatError('Please enter a WhatsApp number.'); return; }
+  if (!/^\d{7,15}$/.test(phone)) {
+    showNewChatError('Enter a valid number with country code (digits only, 7–15 digits).');
+    return;
+  }
+
+  let message = '';
+  let templateId = null;
+
+  if (messageType === 'normal') {
+    message = document.getElementById('newChatMsg').value.trim();
+    if (!message) { showNewChatError('Please type a message.'); return; }
+  } else {
+    templateId = document.getElementById('newChatTemplate').value;
+    if (!templateId) { showNewChatError('Please select a template.'); return; }
+  }
+
+  btn.disabled = true;
+  document.getElementById('newChatBtnLabel').textContent = 'Sending…';
+
+  fetch(SEND_TO_NUM_URL, {
+    method:  'POST',
+    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF_TOKEN },
+    body:    JSON.stringify({ phone, name, message, template_id: templateId, is_template: messageType === 'template' }),
+  })
+  .then(async r => {
+    const text = await r.text();
+    try { return JSON.parse(text); }
+    catch (_) {
+      const m = text.match(/Exception.*?:\s*(.+)/);
+      throw new Error('Server error: ' + (m ? m[0].slice(0, 120) : `HTTP ${r.status}`));
+    }
+  })
+  .then(data => {
+    if (data.success) { window.location.href = data.redirect_url; return; }
+    if (data.is_template_required) {
+      showNewChatError(data.error + ' <a href="/crm/templates/" class="underline font-semibold">Go to Templates</a>');
+    } else {
+      showNewChatError(data.error || 'Failed to send. Please try again.');
+    }
+    resetNewChatBtn();
+  })
+  .catch(err => { showNewChatError(err.message || 'An unexpected error occurred.'); resetNewChatBtn(); });
+}
+
+function showNewChatError(msg) {
+  const el = document.getElementById('newChatError');
+  el.innerHTML = msg;
+  el.classList.remove('hidden');
+}
+
+function resetNewChatBtn() {
+  document.getElementById('newChatSendBtn').disabled = false;
+  document.getElementById('newChatBtnLabel').textContent = 'Send Message';
+}
+
+function toggleMessageType() {
+  const messageType = document.querySelector('input[name="messageType"]:checked').value;
+  const normalInput = document.getElementById('normalMessageInput');
+  const templateInput = document.getElementById('templateMessageInput');
+
+  if (messageType === 'template') {
+    normalInput.classList.add('hidden');
+    templateInput.classList.remove('hidden');
+  } else {
+    normalInput.classList.remove('hidden');
+    templateInput.classList.add('hidden');
+  }
+}
+
+function loadTemplates() {
+  console.log('[TEMPLATES] Loading templates...');
+  fetch('/crm/api/templates/')
+    .then(r => {
+      console.log('[TEMPLATES] Response status:', r.status);
+      return r.json();
+    })
+    .then(data => {
+      console.log('[TEMPLATES] Response data:', data);
+      const select = document.getElementById('newChatTemplate');
+      select.innerHTML = '<option value="">-- Select a template --</option>';
+      if (data.templates && data.templates.length > 0) {
+        data.templates.forEach(t => {
+          const option = document.createElement('option');
+          option.value = t.id;
+          option.textContent = t.title;
+          select.appendChild(option);
+        });
+        console.log('[TEMPLATES] Loaded', data.templates.length, 'templates');
+      } else {
+        console.log('[TEMPLATES] No templates found in response');
+      }
+    })
+    .catch(err => {
+      console.error('[TEMPLATES] Failed to load templates:', err);
+    });
+}
+
+
+/* ════════════════════════════════════════════════════════════
+   BULK MESSAGE
+════════════════════════════════════════════════════════════ */
+
+document.addEventListener('DOMContentLoaded', () => {
+  loadBulkLeads();
+  loadTemplates();      /* load CRM templates */
+});
+
+function switchBulkTab(tab) {
+  bulkCurrentTab = tab;
+  const isCrm = tab === 'crm';
+  document.getElementById('bulkCrmContent').classList.toggle('hidden', !isCrm);
+  document.getElementById('bulkCsvContent').classList.toggle('hidden',  isCrm);
+  document.getElementById('bulkTabCrm').classList.toggle('active',  isCrm);
+  document.getElementById('bulkTabCsv').classList.toggle('active', !isCrm);
+}
+
+function loadBulkLeads() {
+  document.getElementById('bulkLeadsList').innerHTML =
+    `<div class="flex items-center justify-center py-8 text-gray-400 text-sm">
+       <i class="fa-solid fa-spinner fa-spin mr-2"></i>Loading leads…
+     </div>`;
+
+  fetch(BULK_LEADS_URL)
+    .then(r => r.json())
+    .then(data => {
+      bulkAllLeads = (data.leads || []).map(l => ({ ...l, selected: false }));
+      renderBulkLeads(bulkAllLeads);
+    })
+    .catch(() => {
+      document.getElementById('bulkLeadsList').innerHTML =
+        `<div class="flex items-center justify-center py-8 text-red-400 text-sm">Failed to load leads.</div>`;
+    });
+}
+
+function renderBulkLeads(leads) {
+  const list = document.getElementById('bulkLeadsList');
+  if (leads.length === 0) {
+    list.innerHTML = `<div class="flex items-center justify-center py-8 text-gray-400 text-sm">No leads found.</div>`;
+    updateSelectedCount(); return;
+  }
+  list.innerHTML = leads.map(l => `
+    <label class="bulk-row cursor-pointer">
+      <input type="checkbox" data-id="${l.id}" ${l.selected ? 'checked' : ''}
+        onchange="toggleLeadSelect(${l.id}, this.checked)" class="w-4 h-4 accent-[#25D366] flex-shrink-0">
+      <div class="w-8 h-8 rounded-full bg-[#128C7E] flex items-center justify-center text-white font-bold text-xs flex-shrink-0">
+        ${escHtml((l.name || '?').slice(0, 1).toUpperCase())}
+      </div>
+      <div class="flex-1 min-w-0">
+        <div class="text-sm font-medium text-gray-800 truncate">${escHtml(l.name || 'Unknown')}</div>
+        <div class="text-xs text-gray-400 font-mono">${escHtml(l.phone)}</div>
+      </div>
+    </label>
+  `).join('');
+  updateSelectedCount();
+}
+
+function toggleLeadSelect(id, checked) {
+  const lead = bulkAllLeads.find(l => l.id === id);
+  if (lead) lead.selected = checked;
+  updateSelectedCount();
+}
+
+function toggleSelectAllLeads(checkbox) {
+  const visibleIds = Array.from(
+    document.querySelectorAll('#bulkLeadsList input[type="checkbox"]')
+  ).map(i => +i.dataset.id);
+  bulkAllLeads.forEach(l => { if (visibleIds.includes(l.id)) l.selected = checkbox.checked; });
+  renderBulkLeads(getFilteredBulkLeads(document.getElementById('bulkSearchInput').value));
+}
+
+function filterBulkLeads(query) { renderBulkLeads(getFilteredBulkLeads(query)); }
+
+function getFilteredBulkLeads(query) {
+  query = (query || '').toLowerCase().trim();
+  if (!query) return bulkAllLeads;
+  return bulkAllLeads.filter(l =>
+    (l.name  || '').toLowerCase().includes(query) ||
+    (l.phone || '').toLowerCase().includes(query)
+  );
+}
+
+function updateSelectedCount() {
+  document.getElementById('selectedCountLabel').textContent =
+    `${bulkAllLeads.filter(l => l.selected).length} selected`;
+}
+
+/* ── CSV ── */
+const dropZone = document.getElementById('csvDropZone');
+['dragover', 'dragenter'].forEach(ev => dropZone?.addEventListener(ev, e => {
+  e.preventDefault(); dropZone.classList.add('dragover');
+}));
+['dragleave', 'drop'].forEach(ev => dropZone?.addEventListener(ev, e => {
+  e.preventDefault(); dropZone.classList.remove('dragover');
+}));
+dropZone?.addEventListener('drop', e => { const f = e.dataTransfer.files[0]; if (f) handleCsvFile(f); });
+
+function handleCsvFile(file) {
+  console.log('[CSV UPLOAD] File selected:', file);
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = function (e) {
+    console.log('[CSV UPLOAD] File read complete');
+    const text     = e.target.result;
+    console.log('[CSV UPLOAD] CSV text length:', text.length);
+    const rows     = parseCsv(text);
+    console.log('[CSV UPLOAD] Parsed rows:', rows.length);
+    if (rows.length === 0) { showBulkError('CSV appears to be empty.'); return; }
+
+    const header   = rows[0].map(h => h.trim().toLowerCase());
+    console.log('[CSV UPLOAD] Header:', header);
+    const phoneIdx = header.indexOf('phone');
+    const nameIdx  = header.indexOf('name');
+
+    if (phoneIdx === -1) { showBulkError('CSV must contain a "phone" column.'); return; }
+
+    const dataRows      = rows.slice(1);
+    const totalDataRows = dataRows.filter(r => r && r.length > 0 && (r[phoneIdx] || '').trim() !== '').length;
+    console.log('[CSV UPLOAD] Data rows with phone:', totalDataRows);
+
+    if (totalDataRows > CSV_MAX_ROWS) {
+      showBulkError(`CSV contains ${totalDataRows} rows. Maximum allowed is ${CSV_MAX_ROWS}. Please trim the file and re-upload.`);
+      document.getElementById('csvPreview').classList.add('hidden');
+      bulkCsvLeads = [];
+      return;
+    }
+
+    bulkCsvLeads = [];
+    for (let i = 0; i < dataRows.length; i++) {
+      const row = dataRows[i];
+      if (!row || row.length === 0) continue;
+      let phone = (row[phoneIdx] || '').trim().replace(/[\s\-\+]/g, '');
+      if (!phone) continue;
+      const name = nameIdx !== -1 ? (row[nameIdx] || '').trim() : '';
+      bulkCsvLeads.push({ phone, name, selected: true });
+      if (bulkCsvLeads.length >= CSV_MAX_ROWS) break;
+    }
+
+    console.log('[CSV UPLOAD] Valid leads extracted:', bulkCsvLeads.length);
+    if (bulkCsvLeads.length === 0) { showBulkError('No valid phone numbers found in CSV.'); return; }
+    hideBulkError();
+    renderCsvLeads();
+  };
+  reader.readAsText(file);
+}
+
+function parseCsv(text) {
+  const rows = [];
+  let row = [], field = '', inQuotes = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (inQuotes) {
+      if (c === '"') {
+        if (text[i + 1] === '"') { field += '"'; i++; }
+        else inQuotes = false;
+      } else field += c;
+    } else {
+      if (c === '"') inQuotes = true;
+      else if (c === ',') { row.push(field); field = ''; }
+      else if (c === '\n' || c === '\r') {
+        if (field !== '' || row.length > 0) { row.push(field); rows.push(row); row = []; field = ''; }
+        if (c === '\r' && text[i + 1] === '\n') i++;
+      } else field += c;
+    }
+  }
+  if (field !== '' || row.length > 0) { row.push(field); rows.push(row); }
+  return rows.filter(r => r.some(c => c.trim() !== ''));
+}
+
+function renderCsvLeads() {
+  document.getElementById('csvPreview').classList.remove('hidden');
+  document.getElementById('csvCountLabel').textContent = `${bulkCsvLeads.length} / ${CSV_MAX_ROWS} contacts`;
+  document.getElementById('csvLeadsList').innerHTML = bulkCsvLeads.map((l, i) => `
+    <label class="bulk-row cursor-pointer">
+      <input type="checkbox" ${l.selected ? 'checked' : ''}
+        onchange="bulkCsvLeads[${i}].selected = this.checked" class="w-4 h-4 accent-[#25D366] flex-shrink-0">
+      <div class="w-8 h-8 rounded-full bg-[#128C7E] flex items-center justify-center text-white font-bold text-xs flex-shrink-0">
+        ${escHtml((l.name || '?').slice(0, 1).toUpperCase())}
+      </div>
+      <div class="flex-1 min-w-0">
+        <div class="text-sm font-medium text-gray-800 truncate">${escHtml(l.name || 'Unknown')}</div>
+        <div class="text-xs text-gray-400 font-mono">${escHtml(l.phone)}</div>
+      </div>
+    </label>
+  `).join('');
+}
+
+/* ── Fill bulk template ── */
+function fillBulkTemplate() {
+  const select = document.getElementById('bulkTemplateSelect');
+  const selectedOption = select.options[select.selectedIndex];
+  const templateText = selectedOption.getAttribute('data-text');
+
+  bulkTemplateId = select.value || null;
+  if (templateText) {
+    document.getElementById('bulkMessage').value = templateText;
+  }
+}
+
+/* ── Send bulk ── */
+function sendBulkMessages() {
+  const template = document.getElementById('bulkMessage').value.trim();
+  if (!template) { showBulkError('Please enter a message template.'); return; }
+
+  let targets = [];
+  if (bulkCurrentTab === 'crm') {
+    targets = bulkAllLeads.filter(l => l.selected).map(l => ({ phone: l.phone, name: l.name }));
+  } else {
+    targets = bulkCsvLeads.filter(l => l.selected).map(l => ({ phone: l.phone, name: l.name }));
+  }
+
+  if (targets.length === 0) { showBulkError('Please select at least one contact.'); return; }
+  if (bulkCurrentTab === 'csv' && targets.length > CSV_MAX_ROWS) {
+    showBulkError(`You can send to a maximum of ${CSV_MAX_ROWS} contacts from CSV at a time.`);
+    return;
+  }
+  if (!confirm(`Send this message to ${targets.length} contact(s)?`)) return;
+
+  hideBulkError();
+  bulkSending = true;
+  const btn = document.getElementById('bulkSendBtn');
+  btn.disabled = true;
+  document.getElementById('bulkSendLabel').textContent   = 'Sending…';
+  document.getElementById('bulkProgress').classList.remove('hidden');
+  document.getElementById('bulkProgressCount').textContent = `0 / ${targets.length}`;
+  document.getElementById('bulkProgressBar').style.width  = '0%';
+
+  let sent = 0, failed = 0;
+
+  function sendNext(i) {
+    if (i >= targets.length) {
+      bulkSending = false;
+      btn.disabled = false;
+      document.getElementById('bulkSendLabel').textContent     = 'Send to Selected';
+      document.getElementById('bulkProgressLabel').textContent =
+        `Done — ${sent} sent${failed ? `, ${failed} failed` : ''}`;
+      return;
+    }
+    const t            = targets[i];
+    const personalized = template.replace(/\{\{\s*name\s*\}\}/gi, t.name || '');
+
+    fetch(SEND_TO_NUM_URL, {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF_TOKEN },
+      body:    JSON.stringify({
+        phone:       t.phone,
+        name:        t.name || '',
+        message:     personalized,
+        is_template: !!bulkTemplateId,
+        template_id: bulkTemplateId,
+      }),
+    })
+    .then(async r => { const tx = await r.text(); try { return JSON.parse(tx); } catch (_) { return { success: false }; } })
+    .then(data => { if (data.success) sent++; else failed++; })
+    .catch(() => { failed++; })
+    .finally(() => {
+      const done = i + 1;
+      document.getElementById('bulkProgressCount').textContent = `${done} / ${targets.length}`;
+      document.getElementById('bulkProgressBar').style.width   = `${Math.round(done / targets.length * 100)}%`;
+      setTimeout(() => sendNext(i + 1), 400);
+    });
+  }
+
+  sendNext(0);
+}
+
+function showBulkError(msg) {
+  const el = document.getElementById('bulkError');
+  el.textContent = msg;
+  el.classList.remove('hidden');
+}
+function hideBulkError() { document.getElementById('bulkError').classList.add('hidden'); }
+
+window.addEventListener('beforeunload', e => {
+  if (bulkSending) { e.preventDefault(); e.returnValue = ''; }
+});
+</script>
+{% endblock %}

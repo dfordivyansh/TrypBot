@@ -1,0 +1,48 @@
+# Caddy: HTTPS (automatic Let's Encrypt), websockets, static/media files.
+trypbot.duckdns.org {
+	request_body max_size 50MB
+	encode gzip
+
+	handle_path /static/* {
+		root * C:/app/staticfiles
+		file_server
+	}
+	handle_path /media/* {
+		root * C:/app/media
+		file_server
+	}
+	handle_path /widget/* {
+		root * C:/app/widget
+		file_server
+	}
+	handle {
+		# While the app restarts (crash / watchdog / deploy), keep retrying
+		# for up to 30 s instead of answering 502 straight away.
+		reverse_proxy 127.0.0.1:8000 {
+			lb_try_duration 30s
+			lb_try_interval 1s
+		}
+	}
+
+	# App still down after the retries: a page that reloads itself every
+	# 5 s, instead of the browser's "HTTP ERROR 502". WhatsApp/Meta get a
+	# 503 + Retry-After and simply re-deliver later.
+	handle_errors {
+		@down expression `{err.status_code} in [502, 503, 504]`
+		handle @down {
+			header Retry-After 5
+			header Cache-Control no-store
+			header Content-Type "text/html; charset=utf-8"
+			respond <<HTML
+				<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+				<meta http-equiv="refresh" content="5"><title>TrypBot is restarting</title>
+				<style>body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;font:16px system-ui,sans-serif;background:#f0f2f5;color:#172033}
+				.c{background:#fff;padding:28px 24px;border-radius:18px;max-width:360px;text-align:center;box-shadow:0 6px 24px rgba(0,0,0,.08)}
+				.s{width:34px;height:34px;margin:0 auto 14px;border:4px solid #00a86b;border-right-color:transparent;border-radius:50%;animation:r .8s linear infinite}
+				@keyframes r{to{transform:rotate(360deg)}}p{color:#667085;font-size:14px}</style></head>
+				<body><div class="c"><div class="s"></div><b>TrypBot is restarting&hellip;</b><p>This page will reload by itself in a few seconds.</p></div></body></html>
+				HTML 503
+		}
+		respond "{err.status_code} {err.status_text}" {err.status_code}
+	}
+}

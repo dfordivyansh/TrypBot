@@ -1,0 +1,87 @@
+{% extends "chatbot/crm/base.html" %}
+{% load static %}
+
+{% block title %}Login — TrypBot CRM{% endblock %}
+
+{% block auth_content %}
+<div class="min-h-screen bg-gray-50 flex items-center justify-center p-4">
+  <div class="w-full max-w-sm">
+
+    <!-- Card -->
+    <div class="bg-white rounded-2xl shadow-lg border border-gray-100 p-8">
+
+      <!-- Logo -->
+      <div class="flex items-center gap-3 mb-6">
+        <div class="w-10 h-10 rounded-xl bg-[#25D366] flex items-center justify-center shadow-md">
+          <span class="text-white font-bold text-lg leading-none">T</span>
+        </div>
+        <div>
+          <div class="font-bold text-gray-800 text-base leading-tight">TrypBot CRM</div>
+          <div class="text-xs text-gray-400 leading-tight">Sales & Conversation Management</div>
+        </div>
+      </div>
+
+      <h1 class="text-xl font-bold text-gray-800 mb-1">Welcome back</h1>
+      <p class="text-sm text-gray-500 mb-6">Sign in to your account to continue</p>
+
+      {% if form.errors %}
+      <div class="flex items-center gap-2 bg-red-50 border border-red-200 text-red-700 rounded-lg px-3 py-2.5 text-sm mb-4">
+        <i class="fa-solid fa-circle-exclamation flex-shrink-0"></i>
+        <span>Invalid username or password. Please try again.</span>
+      </div>
+      {% endif %}
+
+      <form method="post">
+        {% csrf_token %}
+
+        <div class="mb-4">
+          <label class="block text-xs font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">Username</label>
+          <div class="relative">
+            <i class="fa-solid fa-user absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm"></i>
+            <input
+              type="text"
+              name="username"
+              placeholder="Enter your username"
+              autofocus
+              autocomplete="username"
+              class="w-full pl-9 pr-4 py-2.5 rounded-lg border border-gray-200 bg-gray-50
+                     text-sm text-gray-800 outline-none
+                     focus:border-[#25D366] focus:ring-2 focus:ring-[#25D366]/20 transition"
+            />
+          </div>
+        </div>
+
+        <div class="mb-6">
+          <label class="block text-xs font-semibold text-gray-600 mb-1.5 uppercase tracking-wide">Password</label>
+          <div class="relative">
+            <i class="fa-solid fa-lock absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm"></i>
+            <input
+              type="password"
+              name="password"
+              placeholder="Enter your password"
+              autocomplete="current-password"
+              class="w-full pl-9 pr-4 py-2.5 rounded-lg border border-gray-200 bg-gray-50
+                     text-sm text-gray-800 outline-none
+                     focus:border-[#25D366] focus:ring-2 focus:ring-[#25D366]/20 transition"
+            />
+          </div>
+        </div>
+
+        <button
+          type="submit"
+          class="w-full py-2.5 bg-[#25D366] hover:bg-[#1aab52] text-white font-semibold
+                 rounded-lg text-sm flex items-center justify-center gap-2 transition-colors shadow-sm"
+        >
+          <i class="fa-solid fa-right-to-bracket"></i>
+          Sign In
+        </button>
+      </form>
+
+      <div class="mt-4 text-center">
+        <a href="/admin/password_reset/" class="text-xs text-[#25D366] hover:underline">Forgot password?</a>
+      </div>
+
+    </div>
+  </div>
+</div>
+{% endblock %}

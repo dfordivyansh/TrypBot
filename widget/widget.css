@@ -1,0 +1,1094 @@
+/**
+ * TrypBot Widget CSS
+ * Production-ready embeddable chatbot widget
+ * Modern premium design inspired by Intercom, Tidio, Crisp
+ */
+
+/* ============================================
+   ROOT VARIABLES
+   ============================================ */
+:root {
+  --trypbot-primary: #EF4444;
+  --trypbot-primary-dark: #DC2626;
+  --trypbot-primary-light: #F87171;
+  --trypbot-white: #FFFFFF;
+  --trypbot-gray-50: #F9FAFB;
+  --trypbot-gray-100: #F3F4F6;
+  --trypbot-gray-200: #E5E7EB;
+  --trypbot-gray-300: #D1D5DB;
+  --trypbot-gray-400: #9CA3AF;
+  --trypbot-gray-500: #6B7280;
+  --trypbot-gray-600: #4B5563;
+  --trypbot-gray-700: #374151;
+  --trypbot-gray-800: #1F2937;
+  --trypbot-gray-900: #111827;
+  --trypbot-success: #10B981;
+  --trypbot-error: #EF4444;
+  --trypbot-shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  --trypbot-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  --trypbot-shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+  --trypbot-shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+  --trypbot-radius-sm: 8px;
+  --trypbot-radius: 12px;
+  --trypbot-radius-lg: 16px;
+  --trypbot-radius-xl: 20px;
+  --trypbot-transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* ============================================
+   DARK MODE VARIABLES
+   ============================================ */
+[data-trypbot-theme="dark"] {
+  --trypbot-white: #1F2937;
+  --trypbot-gray-50: #111827;
+  --trypbot-gray-100: #1F2937;
+  --trypbot-gray-200: #374151;
+  --trypbot-gray-300: #4B5563;
+  --trypbot-gray-400: #6B7280;
+  --trypbot-gray-500: #9CA3AF;
+  --trypbot-gray-600: #D1D5DB;
+  --trypbot-gray-700: #E5E7EB;
+  --trypbot-gray-800: #F3F4F6;
+  --trypbot-gray-900: #F9FAFB;
+}
+
+/* ============================================
+   FLOATING BUTTON
+   ============================================ */
+.trypbot-floating-button {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--trypbot-primary) 0%, var(--trypbot-primary-dark) 100%);
+  box-shadow: var(--trypbot-shadow-lg);
+  cursor: pointer;
+  z-index: 2147483647;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: var(--trypbot-transition);
+  border: none;
+  outline: none;
+  overflow: visible;
+}
+
+.trypbot-floating-button:hover {
+  transform: scale(1.1);
+  box-shadow: var(--trypbot-shadow-xl);
+}
+
+.trypbot-floating-button:active {
+  transform: scale(0.95);
+}
+
+.trypbot-floating-button:focus {
+  outline: 2px solid var(--trypbot-primary);
+  outline-offset: 2px;
+}
+
+.trypbot-floating-label {
+  position: absolute;
+  right: 75px;
+  background: var(--trypbot-white);
+  color: var(--trypbot-gray-800);
+  padding: 10px 18px;
+  border-radius: 8px;
+  font-size: 15px;
+  font-weight: 700;
+  white-space: nowrap;
+  opacity: 0;
+  visibility: hidden;
+  transform: translateX(10px);
+  transition: all 0.4s ease-out;
+  box-shadow: var(--trypbot-shadow-lg);
+  pointer-events: none;
+  z-index: 2147483647;
+}
+
+.trypbot-floating-label::before {
+  content: '';
+  position: absolute;
+  right: -6px;
+  top: 50%;
+  transform: translateY(-50%);
+  border-width: 6px 0 6px 6px;
+  border-style: solid;
+  border-color: transparent transparent transparent var(--trypbot-white);
+}
+
+.trypbot-floating-button:hover .trypbot-floating-label,
+.trypbot-floating-label.visible {
+  opacity: 1;
+  visibility: visible;
+  transform: translateX(0);
+}
+
+.trypbot-floating-label-text {
+  overflow: hidden;
+  display: inline-block;
+}
+
+.trypbot-floating-label-text span {
+  display: inline-block;
+  animation: trypbot-text-reveal 0.5s ease-out forwards;
+  opacity: 0;
+  transform: translateY(10px);
+}
+
+@keyframes trypbot-text-reveal {
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Pulse animation */
+@keyframes trypbot-pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(11, 94, 215, 0.4);
+  }
+  70% {
+    box-shadow: 0 0 0 16px rgba(11, 94, 215, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(11, 94, 215, 0);
+  }
+}
+
+.trypbot-floating-button.pulse {
+  animation: trypbot-pulse 2s infinite;
+}
+
+.trypbot-floating-button svg {
+  width: 36px;
+  height: 36px;
+  transition: var(--trypbot-transition);
+}
+
+/* Online indicator */
+.trypbot-online-indicator {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 14px;
+  height: 14px;
+  background-color: var(--trypbot-success);
+  border-radius: 50%;
+  border: 2px solid var(--trypbot-white);
+  box-shadow: var(--trypbot-shadow-sm);
+}
+
+/* Tooltip */
+.trypbot-tooltip {
+  position: absolute;
+  right: 72px;
+  top: 50%;
+  transform: translateY(-50%);
+  background-color: var(--trypbot-gray-800);
+  color: var(--trypbot-white);
+  padding: 8px 16px;
+  border-radius: var(--trypbot-radius);
+  font-size: 14px;
+  font-weight: 500;
+  white-space: nowrap;
+  opacity: 0;
+  visibility: hidden;
+  transition: var(--trypbot-transition);
+  box-shadow: var(--trypbot-shadow);
+}
+
+.trypbot-floating-button:hover .trypbot-tooltip {
+  opacity: 1;
+  visibility: visible;
+}
+
+.trypbot-tooltip::after {
+  content: '';
+  position: absolute;
+  right: -6px;
+  top: 50%;
+  transform: translateY(-50%);
+  border: 6px solid transparent;
+  border-left-color: var(--trypbot-gray-800);
+}
+
+/* Unread badge */
+.trypbot-unread-badge {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  background-color: var(--trypbot-error);
+  color: var(--trypbot-white);
+  font-size: 12px;
+  font-weight: 600;
+  min-width: 20px;
+  height: 20px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 6px;
+  box-shadow: var(--trypbot-shadow-sm);
+  opacity: 0;
+  visibility: hidden;
+  transition: var(--trypbot-transition);
+}
+
+.trypbot-unread-badge.visible {
+  opacity: 1;
+  visibility: visible;
+}
+
+/* ============================================
+   CHAT WINDOW
+   ============================================ */
+.trypbot-chat-window {
+  position: fixed;
+  bottom: 96px;
+  right: 24px;
+  width: 390px;
+  height: 500px;
+  background-color: var(--trypbot-white);
+  border-radius: var(--trypbot-radius-xl);
+  box-shadow: var(--trypbot-shadow-xl);
+  z-index: 2147483647;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(20px) scale(0.95);
+  transition: var(--trypbot-transition);
+}
+
+.trypbot-chat-window.open {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0) scale(1);
+}
+
+.trypbot-chat-window.closing {
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(20px) scale(0.95);
+}
+
+/* ============================================
+   HEADER
+   ============================================ */
+.trypbot-header {
+  background: linear-gradient(135deg, var(--trypbot-primary) 0%, var(--trypbot-primary-dark) 100%);
+  color: var(--trypbot-white);
+  padding: 16px 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  box-shadow: var(--trypbot-shadow);
+  flex-shrink: 0;
+}
+
+.trypbot-header-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.trypbot-logo {
+  width: 40px;
+  height: 40px;
+  border-radius: var(--trypbot-radius);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 16px;
+  color: var(--trypbot-primary);
+}
+
+.trypbot-logo svg {
+  width: 100%;
+  height: 100%;
+}
+
+.trypbot-title {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.trypbot-title h3 {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 1.2;
+  color: var(--trypbot-white);
+}
+
+.trypbot-status {
+  font-size: 12px;
+  font-weight: 500;
+  opacity: 0.9;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.trypbot-status-dot {
+  width: 8px;
+  height: 8px;
+  background-color: var(--trypbot-success);
+  border-radius: 50%;
+  animation: trypbot-status-pulse 2s infinite;
+}
+
+@keyframes trypbot-status-pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+.trypbot-header-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.trypbot-header-button {
+  background: rgba(255, 255, 255, 0.2);
+  border: none;
+  border-radius: var(--trypbot-radius-sm);
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: var(--trypbot-transition);
+  color: var(--trypbot-white);
+  flex-shrink: 0;
+  z-index: 2147483647;
+  position: relative;
+}
+
+.trypbot-header-button:hover {
+  background: rgba(255, 255, 255, 0.3);
+}
+
+.trypbot-header-button:focus {
+  outline: 2px solid var(--trypbot-white);
+  outline-offset: 2px;
+}
+
+.trypbot-header-button svg {
+  width: 20px;
+  height: 20px;
+  min-width: 20px;
+  min-height: 20px;
+}
+
+/* ============================================
+   CONTENT AREA
+   ============================================ */
+.trypbot-content {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  background-color: var(--trypbot-gray-50);
+  padding: 20px;
+  scroll-behavior: smooth;
+}
+
+.trypbot-content::-webkit-scrollbar {
+  width: 6px;
+}
+
+.trypbot-content::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.trypbot-content::-webkit-scrollbar-thumb {
+  background-color: var(--trypbot-gray-300);
+  border-radius: 3px;
+}
+
+.trypbot-content::-webkit-scrollbar-thumb:hover {
+  background-color: var(--trypbot-gray-400);
+}
+
+/* ============================================
+   WELCOME SCREEN
+   ============================================ */
+.trypbot-welcome-screen {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  text-align: center;
+  padding: 20px 20px 40px 20px;
+}
+
+.trypbot-welcome-emoji {
+  font-size: 48px;
+  margin-bottom: 16px;
+}
+
+.trypbot-welcome-title {
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--trypbot-gray-800);
+  margin-bottom: 8px;
+}
+
+.trypbot-welcome-subtitle {
+  font-size: 14px;
+  color: var(--trypbot-gray-600);
+  margin-bottom: 32px;
+  line-height: 1.5;
+}
+
+.trypbot-form {
+  width: 100%;
+  max-width: 280px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.trypbot-form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  text-align: left;
+}
+
+.trypbot-form-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--trypbot-gray-700);
+}
+
+.trypbot-form-input {
+  width: 100%;
+  padding: 16px 16px;
+  border: 2px solid var(--trypbot-gray-200);
+  border-radius: var(--trypbot-radius);
+  font-size: 14px;
+  transition: var(--trypbot-transition);
+  background-color: var(--trypbot-white);
+  color: var(--trypbot-gray-800);
+  box-sizing: border-box;
+  min-height: 50px;
+}
+
+.trypbot-form-input:focus {
+  outline: none;
+  border-color: var(--trypbot-primary);
+  box-shadow: 0 0 0 3px rgba(11, 94, 215, 0.1);
+}
+
+.trypbot-form-input::placeholder {
+  color: var(--trypbot-gray-400);
+}
+
+.trypbot-form-input.error {
+  border-color: var(--trypbot-error);
+}
+
+.trypbot-form-error {
+  font-size: 12px;
+  color: var(--trypbot-error);
+  margin-top: 4px;
+  display: none;
+}
+
+.trypbot-form-error.visible {
+  display: block;
+}
+
+.trypbot-form-input.error + .trypbot-form-error {
+  display: block;
+}
+
+.trypbot-continue-button {
+  width: 100%;
+  padding: 14px 24px;
+  background: linear-gradient(135deg, var(--trypbot-primary) 0%, var(--trypbot-primary-dark) 100%);
+  color: var(--trypbot-white);
+  border: none;
+  border-radius: var(--trypbot-radius);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: var(--trypbot-transition);
+  box-shadow: var(--trypbot-shadow);
+  margin-top: 8px;
+}
+
+.trypbot-continue-button:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: var(--trypbot-shadow-lg);
+}
+
+.trypbot-continue-button:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.trypbot-continue-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.trypbot-continue-button:focus {
+  outline: 2px solid var(--trypbot-primary);
+  outline-offset: 2px;
+}
+
+/* ============================================
+   CHAT SCREEN
+   ============================================ */
+.trypbot-chat-screen {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.trypbot-messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* IE and Edge */
+}
+
+.trypbot-messages::-webkit-scrollbar {
+  display: none; /* Chrome, Safari, Opera */
+}
+
+.trypbot-message {
+  display: flex;
+  flex-direction: column;
+  max-width: 80%;
+  animation: trypbot-message-in 0.3s ease-out;
+}
+
+@keyframes trypbot-message-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.trypbot-message.user {
+  align-self: flex-end;
+  align-items: flex-end;
+}
+
+.trypbot-message.bot {
+  align-self: flex-start;
+  align-items: flex-start;
+}
+
+.trypbot-message-bubble {
+  padding: 10px 14px;
+  border-radius: var(--trypbot-radius-lg);
+  font-size: 14px;
+  line-height: 1.4;
+  word-wrap: break-word;
+  position: relative;
+}
+
+.trypbot-message-text {
+  margin-bottom: 0;
+}
+
+.trypbot-message-text br {
+  display: block;
+  margin: 4px 0;
+  content: "";
+}
+
+.trypbot-message.user .trypbot-message-bubble {
+  background: linear-gradient(135deg, var(--trypbot-primary) 0%, var(--trypbot-primary-dark) 100%);
+  color: var(--trypbot-white);
+  border-bottom-right-radius: 4px;
+}
+
+.trypbot-message.bot .trypbot-message-bubble {
+  background-color: var(--trypbot-white);
+  color: var(--trypbot-gray-800);
+  border: 1px solid var(--trypbot-gray-200);
+  border-bottom-left-radius: 4px;
+  box-shadow: var(--trypbot-shadow-sm);
+}
+
+.trypbot-message-time {
+  font-size: 11px;
+  color: var(--trypbot-gray-400);
+  margin-top: 4px;
+  padding: 0 4px;
+}
+
+.trypbot-message.user .trypbot-message-time {
+  text-align: right;
+}
+
+/* Typing indicator */
+.trypbot-typing-indicator {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 12px 16px;
+  background-color: var(--trypbot-white);
+  border-radius: var(--trypbot-radius-lg);
+  border: 1px solid var(--trypbot-gray-200);
+  border-bottom-left-radius: 4px;
+  box-shadow: var(--trypbot-shadow-sm);
+  width: fit-content;
+  opacity: 0;
+  visibility: hidden;
+  transition: var(--trypbot-transition);
+}
+
+.trypbot-typing-indicator.visible {
+  opacity: 1;
+  visibility: visible;
+}
+
+.trypbot-typing-dot {
+  width: 8px;
+  height: 8px;
+  background-color: var(--trypbot-gray-400);
+  border-radius: 50%;
+  animation: trypbot-typing-bounce 1.4s infinite ease-in-out;
+}
+
+.trypbot-typing-dot:nth-child(1) {
+  animation-delay: 0s;
+}
+
+.trypbot-typing-dot:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.trypbot-typing-dot:nth-child(3) {
+  animation-delay: 0.4s;
+}
+
+@keyframes trypbot-typing-bounce {
+  0%, 60%, 100% {
+    transform: translateY(0);
+  }
+  30% {
+    transform: translateY(-8px);
+  }
+}
+
+/* ============================================
+   OPTIONS
+   ============================================ */
+.trypbot-message-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 12px;
+}
+
+.trypbot-option-btn {
+  background-color: #f3f4f6;
+  border: 1px solid #e5e7eb;
+  border-radius: 16px;
+  padding: 6px 12px;
+  font-size: 12px;
+  color: #374151;
+  cursor: pointer;
+  transition: var(--trypbot-transition);
+  font-family: inherit;
+}
+
+.trypbot-option-btn:hover {
+  background-color: #e5e7eb;
+  border-color: #d1d5db;
+}
+
+.trypbot-option-btn:focus {
+  outline: 2px solid var(--trypbot-primary);
+  outline-offset: 2px;
+}
+
+.trypbot-whatsapp-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background-color: #25D366;
+  color: white;
+  text-decoration: none;
+  padding: 10px 16px;
+  border-radius: 8px;
+  font-weight: 600;
+  font-size: 14px;
+  margin-top: 12px;
+  transition: var(--trypbot-transition);
+}
+
+.trypbot-whatsapp-btn:hover {
+  background-color: #128C7E;
+  transform: translateY(-1px);
+}
+
+.trypbot-whatsapp-btn:focus {
+  outline: 2px solid var(--trypbot-primary);
+  outline-offset: 2px;
+}
+
+/* ============================================
+   INPUT AREA
+   ============================================ */
+.trypbot-input-area {
+  padding: 16px;
+  background-color: var(--trypbot-white);
+  border-top: 1px solid var(--trypbot-gray-200);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
+  position: relative;
+}
+
+.trypbot-emoji-button {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 8px;
+  border-radius: var(--trypbot-radius-sm);
+  transition: var(--trypbot-transition);
+  color: var(--trypbot-gray-400);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.trypbot-emoji-button:hover {
+  background-color: var(--trypbot-gray-100);
+  color: var(--trypbot-gray-600);
+}
+
+.trypbot-emoji-button:focus {
+  outline: 2px solid var(--trypbot-primary);
+  outline-offset: 2px;
+}
+
+.trypbot-emoji-button svg {
+  width: 20px;
+  height: 20px;
+}
+
+.trypbot-emoji-picker {
+  position: absolute;
+  bottom: 60px;
+  left: 0;
+  background-color: var(--trypbot-white);
+  border: 1px solid var(--trypbot-gray-200);
+  border-radius: 12px;
+  box-shadow: var(--trypbot-shadow-lg);
+  padding: 12px;
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  gap: 8px;
+  max-width: 320px;
+  max-height: 200px;
+  overflow-y: auto;
+  z-index: 10000000;
+  scrollbar-width: thin;
+  scrollbar-color: var(--trypbot-gray-300) var(--trypbot-gray-100);
+}
+
+.trypbot-emoji-picker::-webkit-scrollbar {
+  width: 6px;
+}
+
+.trypbot-emoji-picker::-webkit-scrollbar-track {
+  background: var(--trypbot-gray-100);
+  border-radius: 3px;
+}
+
+.trypbot-emoji-picker::-webkit-scrollbar-thumb {
+  background: var(--trypbot-gray-300);
+  border-radius: 3px;
+}
+
+.trypbot-emoji-item {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 20px;
+  padding: 4px;
+  border-radius: 4px;
+  transition: var(--trypbot-transition);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.trypbot-emoji-item:hover {
+  background-color: var(--trypbot-gray-100);
+  transform: scale(1.2);
+}
+
+.trypbot-emoji-item:focus {
+  outline: 2px solid var(--trypbot-primary);
+  outline-offset: 2px;
+}
+
+.trypbot-input-wrapper {
+  flex: 1;
+  position: relative;
+}
+
+.trypbot-message-input {
+  width: 100%;
+  padding: 12px 16px;
+  border: 2px solid var(--trypbot-gray-200);
+  border-radius: var(--trypbot-radius-lg);
+  font-size: 14px;
+  transition: var(--trypbot-transition);
+  background-color: var(--trypbot-gray-50);
+  color: var(--trypbot-gray-800);
+  resize: none;
+  box-sizing: border-box;
+  font-family: inherit;
+  line-height: 1.5;
+  min-height: 44px;
+  max-height: 120px;
+}
+
+.trypbot-message-input:focus {
+  outline: none;
+  border-color: var(--trypbot-primary);
+  background-color: var(--trypbot-white);
+  box-shadow: 0 0 0 3px rgba(11, 94, 215, 0.1);
+}
+
+.trypbot-message-input::placeholder {
+  color: var(--trypbot-gray-400);
+}
+
+.trypbot-send-button {
+  background: linear-gradient(135deg, var(--trypbot-primary) 0%, var(--trypbot-primary-dark) 100%);
+  color: var(--trypbot-white);
+  border: none;
+  border-radius: var(--trypbot-radius-lg);
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: var(--trypbot-transition);
+  box-shadow: var(--trypbot-shadow);
+  flex-shrink: 0;
+}
+
+.trypbot-send-button:hover:not(:disabled) {
+  transform: scale(1.05);
+  box-shadow: var(--trypbot-shadow-lg);
+}
+
+.trypbot-send-button:active:not(:disabled) {
+  transform: scale(0.95);
+}
+
+.trypbot-send-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.trypbot-send-button:focus {
+  outline: 2px solid var(--trypbot-primary);
+  outline-offset: 2px;
+}
+
+.trypbot-send-button svg {
+  width: 20px;
+  height: 20px;
+}
+
+/* ============================================
+   RESPONSIVE DESIGN
+   ============================================ */
+@media (max-width: 768px) {
+  .trypbot-chat-window {
+    width: calc(100% - 32px);
+    right: 16px;
+    left: 16px;
+    top: 50%;
+    bottom: auto;
+    transform: translateY(-50%) scale(0.95);
+    height: 80vh;
+    max-height: 600px;
+    border-radius: 20px;
+  }
+
+  .trypbot-chat-window.open {
+    transform: translateY(-50%) scale(1);
+  }
+
+  .trypbot-chat-window.closing {
+    transform: translateY(-50%) scale(0.95);
+  }
+
+  .trypbot-floating-button {
+    bottom: 16px;
+    right: 16px;
+    width: 56px;
+    height: 56px;
+  }
+
+  .trypbot-floating-button svg {
+    width: 28px;
+    height: 28px;
+  }
+
+  .trypbot-tooltip {
+    display: none;
+  }
+
+  .trypbot-floating-label {
+    right: 70px;
+    font-size: 13px;
+    padding: 8px 14px;
+  }
+}
+
+@media (max-width: 480px) {
+  .trypbot-chat-window {
+    width: calc(100% - 32px);
+    right: 16px;
+    left: 16px;
+    top: 50%;
+    bottom: auto;
+    transform: translateY(-50%) scale(0.95);
+    height: 80vh;
+    max-height: 600px;
+    border-radius: 20px;
+  }
+
+  .trypbot-chat-window.open {
+    transform: translateY(-50%) scale(1);
+  }
+
+  .trypbot-chat-window.closing {
+    transform: translateY(-50%) scale(0.95);
+  }
+
+  .trypbot-floating-button {
+    bottom: 16px;
+    right: 16px;
+  }
+}
+
+/* ============================================
+   ACCESSIBILITY
+   ============================================ */
+.trypbot-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border-width: 0;
+}
+
+/* Focus visible */
+.trypbot-floating-button:focus-visible,
+.trypbot-header-button:focus-visible,
+.trypbot-continue-button:focus-visible,
+.trypbot-emoji-button:focus-visible,
+.trypbot-send-button:focus-visible,
+.trypbot-form-input:focus-visible,
+.trypbot-message-input:focus-visible {
+  outline: 2px solid var(--trypbot-primary);
+  outline-offset: 2px;
+}
+
+/* Reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  .trypbot-floating-button,
+  .trypbot-chat-window,
+  .trypbot-message,
+  .trypbot-header-button,
+  .trypbot-continue-button,
+  .trypbot-emoji-button,
+  .trypbot-send-button,
+  .trypbot-form-input,
+  .trypbot-message-input {
+    transition: none;
+    animation: none;
+  }
+
+  .trypbot-floating-button.pulse {
+    animation: none;
+  }
+
+  .trypbot-status-dot {
+    animation: none;
+  }
+
+  .trypbot-typing-dot {
+    animation: none;
+  }
+}
+
+/* ============================================
+   GLASSMORPHISM EFFECTS
+   ============================================ */
+.trypbot-glass {
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+
+[data-trypbot-theme="dark"] .trypbot-glass {
+  background: rgba(31, 41, 55, 0.95);
+}
+
+/* ============================================
+   LOADING STATE
+   ============================================ */
+.trypbot-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 40px;
+}
+
+.trypbot-spinner {
+  width: 32px;
+  height: 32px;
+  border: 3px solid var(--trypbot-gray-200);
+  border-top-color: var(--trypbot-primary);
+  border-radius: 50%;
+  animation: trypbot-spin 1s linear infinite;
+}
+
+@keyframes trypbot-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}

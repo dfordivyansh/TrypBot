@@ -1,0 +1,689 @@
+{% extends "chatbot/crm/base.html" %}
+
+{% block title %}Lead Analysis - CRM{% endblock %}
+
+{% block content %}
+<div class="p-3 sm:p-6 overflow-x-auto">
+  <!-- Header -->
+  <div class="mb-6 flex flex-wrap items-center justify-between gap-3">
+    <div>
+      <h1 class="text-2xl font-bold text-gray-900">Lead Analysis</h1>
+      <p class="text-gray-600 mt-1">Analyze leads by label and sales person performance</p>
+    </div>
+    <div class="flex gap-2">
+      <a href="{% url 'crm_export_leads_analysis' %}?{% if label_filter %}label={{ label_filter }}&{% endif %}{% if sales_person_filter %}sales_person={{ sales_person_filter }}&{% endif %}{% if date_from %}date_from={{ date_from }}&{% endif %}{% if date_to %}date_to={{ date_to }}&{% endif %}{% if status_filter %}status={{ status_filter }}&{% endif %}{% if source_filter %}source={{ source_filter }}&{% endif %}" 
+         class="bg-green-600 hover:bg-green-700 text-white font-medium px-4 py-2 rounded-md transition-colors flex items-center gap-2">
+        <i class="fa-solid fa-file-excel"></i>
+        Download All Leads
+      </a>
+    </div>
+  </div>
+
+  <!-- Filters -->
+  <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-4 mb-6">
+    <form method="GET" class="grid grid-cols-1 md:grid-cols-5 gap-4">
+      <!-- Label Filter -->
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1">Label</label>
+        <select name="label" class="w-full rounded-md border-gray-300 shadow-sm focus:border-brand focus:ring focus:ring-brand focus:ring-opacity-50">
+          <option value="">All Labels</option>
+          {% for label in labels %}
+            <option value="{{ label.name }}" {% if label_filter == label.name %}selected{% endif %}>
+              {{ label.name }}
+            </option>
+          {% endfor %}
+          <option value="__none__" {% if label_filter == "__none__" %}selected{% endif %}>No Label</option>
+        </select>
+      </div>
+
+      <!-- Sales Person Filter -->
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1">Sales Person</label>
+        {% if can_pick_person %}
+        <select name="sales_person" class="w-full rounded-md border-gray-300 shadow-sm focus:border-brand focus:ring focus:ring-brand focus:ring-opacity-50">
+          <option value="">{% if is_admin %}All Sales Persons{% else %}My Team{% endif %}</option>
+          {% if is_admin %}<option value="none" {% if sales_person_filter == "none" %}selected{% endif %}>Not Assigned</option>{% endif %}
+          {% for sp in sales_persons %}
+            <option value="{{ sp.id }}" {% if sales_person_filter == sp.id|stringformat:"s" %}selected{% endif %}>
+              {{ sp.get_full_name|default:sp.username }}
+            </option>
+          {% endfor %}
+        </select>
+        {% else %}
+        <select name="sales_person" disabled class="w-full rounded-md border-gray-300 bg-gray-100 shadow-sm focus:border-brand focus:ring focus:ring-brand focus:ring-opacity-50 cursor-not-allowed">
+          {% for sp in sales_persons %}
+            <option value="{{ sp.id }}" selected>
+              {{ sp.get_full_name|default:sp.username }}
+            </option>
+          {% endfor %}
+        </select>
+        <input type="hidden" name="sales_person" value="{{ request.user.id }}">
+        {% endif %}
+      </div>
+
+      <!-- Status Filter -->
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1">Status</label>
+        <select name="status" class="w-full rounded-md border-gray-300 shadow-sm focus:border-brand focus:ring focus:ring-brand focus:ring-opacity-50">
+          <option value="">All Status</option>
+          <option value="active" {% if status_filter == "active" %}selected{% endif %}>Active (24h)</option>
+          <option value="inactive" {% if status_filter == "inactive" %}selected{% endif %}>Inactive (>24h)</option>
+        </select>
+      </div>
+
+      <!-- Source Filter -->
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1">Source</label>
+        <select name="source" class="w-full rounded-md border-gray-300 shadow-sm focus:border-brand focus:ring focus:ring-brand focus:ring-opacity-50">
+          <option value="">All Sources</option>
+          <option value="website" {% if source_filter == "website" %}selected{% endif %}>Website</option>
+          <option value="whatsapp" {% if source_filter == "whatsapp" %}selected{% endif %}>WhatsApp/Meta</option>
+        </select>
+      </div>
+
+      <!-- Date From -->
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1">Date From</label>
+        <input type="date" name="date_from" value="{{ date_from }}" class="w-full rounded-md border-gray-300 shadow-sm focus:border-brand focus:ring focus:ring-brand focus:ring-opacity-50">
+      </div>
+
+      <!-- Date To -->
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1">Date To</label>
+        <input type="date" name="date_to" value="{{ date_to }}" class="w-full rounded-md border-gray-300 shadow-sm focus:border-brand focus:ring focus:ring-brand focus:ring-opacity-50">
+      </div>
+
+      <!-- Submit Button -->
+      <div class="md:col-span-5 flex gap-2">
+        <button type="submit" class="bg-brand hover:bg-brand-dark text-white font-medium px-4 py-2 rounded-md transition-colors">
+          Apply Filters
+        </button>
+        <a href="{% url 'crm_lead_analysis' %}" class="bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium px-4 py-2 rounded-md transition-colors">
+          Clear
+        </a>
+      </div>
+    </form>
+  </div>
+
+  <!-- Statistics Cards: admin all, team leader their team, sales person their own -->
+  {% if True %}
+  <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+    <!-- Label Statistics -->
+    <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
+      <h2 class="text-lg font-semibold text-gray-900 mb-4">Leads by Label</h2>
+      {% if label_stats %}
+        <div class="space-y-3">
+          {% for label_name, stats in label_stats.items %}
+            <div class="flex items-center justify-between">
+              <div class="flex items-center gap-2">
+                <span class="w-3 h-3 rounded-full" style="background-color: {{ stats.color }}"></span>
+                <span class="text-sm font-medium text-gray-700">{{ label_name }}</span>
+              </div>
+              <span class="text-sm font-semibold text-gray-900">{{ stats.count }}</span>
+            </div>
+          {% endfor %}
+        </div>
+      {% else %}
+        <p class="text-gray-500 text-sm">No data available</p>
+      {% endif %}
+    </div>
+
+    <!-- Sales Person Statistics -->
+    <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
+      <h2 class="text-lg font-semibold text-gray-900 mb-4">Leads by Sales Person</h2>
+      {% if sales_stats %}
+        <div class="space-y-3">
+          {% for sp_id, stats in sales_stats.items %}
+            <div class="flex items-center justify-between">
+              <span class="text-sm font-medium text-gray-700">{{ stats.name }}</span>
+              <span class="text-sm font-semibold text-gray-900">{{ stats.count }}</span>
+            </div>
+          {% endfor %}
+        </div>
+      {% else %}
+        <p class="text-gray-500 text-sm">No data available</p>
+      {% endif %}
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- Total Leads -->
+  <div class="bg-brand text-white rounded-lg p-4 mb-6">
+    <div class="flex items-center justify-between">
+      <span class="text-lg font-medium">Total Leads</span>
+      <span class="text-2xl font-bold">{{ total_leads }}</span>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════
+       DAY-WISE LEAD SUMMARY CARD
+  ══════════════════════════════════════════════════ -->
+  <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-4 mb-6">
+    <!-- Header -->
+    <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-4">
+      <div class="flex items-center gap-2">
+        <i class="fa-solid fa-chart-column text-gray-600"></i>
+        <h3 class="text-lg font-semibold text-gray-900">Day-wise Lead Summary</h3>
+      </div>
+      <div class="flex items-center gap-2 flex-wrap">
+        <input type="date" id="dwStart" class="border border-gray-300 rounded-md px-2 py-1 text-sm">
+        <span class="text-gray-400 text-xs">to</span>
+        <input type="date" id="dwEnd" class="border border-gray-300 rounded-md px-2 py-1 text-sm">
+        <button onclick="loadDaywiseStats()" class="bg-brand hover:bg-brand-dark text-white text-sm px-3 py-1 rounded-md transition-colors">
+          <i class="fa-solid fa-filter mr-1"></i>Apply
+        </button>
+      </div>
+    </div>
+
+    <!-- KPI tiles - Dynamic labels from database only -->
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4 overflow-x-auto" id="dwKpiGrid">
+      <!-- Dynamic label tiles will be injected here by JS -->
+    </div>
+
+    <!-- Label chip summary row -->
+    <div id="dwLabelChips" style="display:none; flex-wrap:wrap; gap:8px; margin-bottom:16px;"></div>
+
+    <!-- Tab bar -->
+    <div class="flex gap-2 mb-4">
+      <button id="dwTabTable" class="px-3 py-1 bg-brand text-white text-sm rounded-md" onclick="dwSwitchTab('table')">
+        <i class="fa-solid fa-table-list mr-1"></i>Table
+      </button>
+      <button id="dwTabChart" class="px-3 py-1 bg-gray-100 text-gray-700 text-sm rounded-md hover:bg-gray-200" onclick="dwSwitchTab('chart')">
+        <i class="fa-solid fa-chart-bar mr-1"></i>Chart
+      </button>
+    </div>
+
+    <!-- TABLE VIEW -->
+    <div id="dwTableView" class="overflow-x-auto">
+      <table class="min-w-full divide-y divide-gray-200">
+        <thead id="dwTableHead">
+          <tr>
+            <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase whitespace-nowrap">Date</th>
+            <!-- Dynamic label columns will be injected here -->
+            <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase whitespace-nowrap">Volume</th>
+          </tr>
+        </thead>
+        <tbody id="dwTableBody">
+          <tr>
+            <td colspan="2" class="px-4 py-8 text-center text-gray-500">
+              <i class="fa-solid fa-calendar-days mr-2"></i>
+              Select a date range and click Apply
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- CHART VIEW (hidden by default) -->
+    <div id="dwChartView" style="display:none;">
+      <div style="position:relative; height:220px;">
+        <canvas id="dwChart"></canvas>
+      </div>
+    </div>
+  </div>
+  <!-- END DAY-WISE CARD -->
+
+  <!-- Leads Table -->
+  <div class="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+    <div class="overflow-x-auto">
+      <table class="min-w-full divide-y divide-gray-200">
+        <thead class="bg-gray-50">
+          <tr>
+            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Lead</th>
+            <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Phone</th>
+            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Label</th>
+            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Sales Person</th>
+            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Last Activity</th>
+            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">24h Status</th>
+            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+          </tr>
+        </thead>
+        <tbody class="bg-white divide-y divide-gray-200">
+          {% for item in leads %}
+            {% with session=item.session label=item.label assigned_to=item.assigned_to closed=item.closed is_active=item.is_active hours=item.hours_since_activity %}
+            <tr class="hover:bg-gray-50">
+              <td class="px-6 py-4 whitespace-nowrap">
+                <div class="text-sm font-medium text-gray-900">
+                  {{ session.user_name|default:session.phone_number|default:"Unknown" }}
+                </div>
+                <div class="text-xs text-gray-500">{{ session.id }}</div>
+              </td>
+              <td class="px-3 py-4 whitespace-nowrap text-sm text-gray-900">
+                {{ session.phone_number|default:"-" }}
+              </td>
+              <td class="px-6 py-4 whitespace-nowrap">
+                {% if label %}
+                  <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium" style="background-color: {{ label.color }}20; color: {{ label.color }}">
+                    {{ label.name }}
+                  </span>
+                {% else %}
+                  <span class="text-gray-400 text-sm">-</span>
+                {% endif %}
+              </td>
+              <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                {% if assigned_to %}
+                  {{ assigned_to.get_full_name|default:assigned_to.username }}
+                {% elif session.assigned_sales_person %}
+                  {{ session.assigned_sales_person.get_full_name|default:session.assigned_sales_person.username }}
+                {% else %}
+                  <span class="text-gray-400">Not Assigned</span>
+                {% endif %}
+              </td>
+              <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                {{ session.updated_at|date:"M d, Y H:i" }}
+              </td>
+              <td class="px-6 py-4 whitespace-nowrap">
+                {% if closed %}
+                  <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
+                    Closed
+                  </span>
+                {% elif is_active %}
+                  <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                    Active
+                  </span>
+                {% else %}
+                  <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
+                    Inactive
+                  </span>
+                {% endif %}
+                <div class="text-xs text-gray-400 mt-1">
+                  {{ hours|floatformat:1 }}h ago
+                </div>
+              </td>
+              <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                <a href="{% url 'crm_chat_detail' session.id %}" class="text-brand hover:text-brand-dark">
+                  View Chat
+                </a>
+              </td>
+            </tr>
+            {% endwith %}
+          {% empty %}
+            <tr>
+              <td colspan="7" class="px-6 py-12 text-center text-gray-500">
+                No leads found matching your filters.
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Pagination -->
+    {% if leads.has_other_pages %}
+    <div class="bg-gray-50 px-6 py-4 border-t border-gray-200">
+      <div class="flex items-center justify-between">
+        <div class="text-sm text-gray-700">
+          Showing {{ leads.start_index }} to {{ leads.end_index }} of {{ leads.paginator.count }} leads
+        </div>
+        <div class="flex gap-2">
+          {% if leads.has_previous %}
+            <a href="?page={{ leads.previous_page_number }}{% if page_qs %}&{{ page_qs }}{% endif %}"
+               class="px-3 py-1 bg-white border border-gray-300 rounded-md text-sm text-gray-700 hover:bg-gray-50">
+              Previous
+            </a>
+          {% endif %}
+          
+          <span class="px-3 py-1 text-sm text-gray-700">
+            Page {{ leads.number }} of {{ leads.paginator.num_pages }}
+          </span>
+          
+          {% if leads.has_next %}
+            <a href="?page={{ leads.next_page_number }}{% if page_qs %}&{{ page_qs }}{% endif %}"
+               class="px-3 py-1 bg-white border border-gray-300 rounded-md text-sm text-gray-700 hover:bg-gray-50">
+              Next
+            </a>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script>
+const DAYWISE_URL = "{% url 'crm_daywise_stats' %}";
+
+/* ════════════════════════════════════════════════════════════
+   HELPERS
+════════════════════════════════════════════════════════════ */
+function escHtml(s) {
+  return String(s || '')
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+/** Convert a hex colour to rgba with given alpha */
+function hexAlpha(hex, a) {
+  hex = (hex || '#888888').replace('#', '');
+  if (hex.length === 3) hex = hex.split('').map(c => c + c).join('');
+  const r = parseInt(hex.slice(0, 2), 16);
+  const g = parseInt(hex.slice(2, 4), 16);
+  const b = parseInt(hex.slice(4, 6), 16);
+  return `rgba(${r},${g},${b},${a})`;
+}
+
+/** Lighten hex colour for tile background */
+function hexLight(hex) { return hexAlpha(hex, 0.12); }
+function hexBorder(hex) { return hexAlpha(hex, 0.30); }
+
+/* ════════════════════════════════════════════════════════════
+   DAY-WISE DASHBOARD
+════════════════════════════════════════════════════════════ */
+let dwChartInst  = null;
+let dwCurrentTab = 'table';
+let dwLastRows   = [];
+let dwAllLabels  = [];
+
+/* Set default range: last 7 days */
+(function initDates() {
+  // Get URL parameters first
+  const urlParams = new URLSearchParams(window.location.search);
+  const urlStart = urlParams.get('date_from');
+  const urlEnd = urlParams.get('date_to');
+
+  const today = new Date();
+  const ago   = new Date();
+  ago.setDate(today.getDate() - 6);
+  const fmt = d => d.toISOString().split('T')[0];
+  const startEl = document.getElementById('dwStart');
+  const endEl = document.getElementById('dwEnd');
+
+  // Use URL parameters if available, otherwise default to last 7 days
+  if (startEl) startEl.value = urlStart || fmt(ago);
+  if (endEl) endEl.value = urlEnd || fmt(today);
+
+  console.log('Initialized dates from URL:', { urlStart, urlEnd, start: startEl.value, end: endEl.value });
+
+  // Auto-load data after setting dates
+  setTimeout(loadDaywiseStats, 100);
+})();
+
+/* ── Fetch data from backend ── */
+function loadDaywiseStats() {
+  const start = document.getElementById('dwStart').value;
+  const end   = document.getElementById('dwEnd').value;
+  console.log('Date range selected:', { start, end });
+  if (!start || !end) {
+    console.error('Missing date range');
+    return;
+  }
+
+  /* Show loading state */
+  document.getElementById('dwTableBody').innerHTML =
+    `<tr><td colspan="6">
+       <td colspan="6" class="px-4 py-8 text-center text-gray-500">
+         <i class="fa-solid fa-spinner fa-spin mr-2"></i>Loading…
+       </td>
+     </td></tr>`;
+
+  console.log(`Fetching data from ${DAYWISE_URL} with start=${start}, end=${end}`);
+  
+  // Same Sales Person / Source filters as the page, so the numbers match.
+  const pageParams = new URLSearchParams(location.search);
+  const dwExtra = ['sales_person', 'source']
+    .filter(k => pageParams.get(k))
+    .map(k => `&${k}=${encodeURIComponent(pageParams.get(k))}`).join('');
+  fetch(`${DAYWISE_URL}?start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}${dwExtra}`)
+    .then(r => {
+      console.log('Response status:', r.status);
+      return r.json();
+    })
+    .then(data => {
+      console.log('Received data:', data);
+      if (!data.success) { 
+        console.error('API returned success=false:', data);
+        dwShowError(); 
+        return; 
+      }
+      dwAllLabels = data.labels  || [];
+      dwLastRows  = data.rows    || [];
+      console.log('Labels:', dwAllLabels);
+      console.log('Rows:', dwLastRows);
+      renderDaywiseAll();
+    })
+    .catch(err => {
+      console.error('Fetch error:', err);
+      dwShowError();
+    });
+}
+
+function dwShowError() {
+  document.getElementById('dwTableBody').innerHTML =
+    `<tr><td colspan="6">
+       <td colspan="6" class="px-4 py-8 text-center text-red-500">
+         <i class="fa-solid fa-triangle-exclamation mr-2"></i>Failed to load data
+       </td>
+     </td></tr>`;
+}
+
+/* ── Master render (calls sub-renders) ── */
+function renderDaywiseAll() {
+  renderKpiTiles();
+  renderLabelChips();
+  if (dwCurrentTab === 'table') renderTable();
+  else renderChart();
+}
+
+/* ── KPI tiles ── */
+function renderKpiTiles() {
+  /* Remove old dynamic tiles */
+  document.querySelectorAll('.dw-kpi-dynamic').forEach(el => el.remove());
+
+  /* Calculate total volume from 'new' field (all sessions created that day) */
+  const totalVolume = dwLastRows.reduce((a, r) => a + (r.new || 0), 0);
+
+  /* Add total volume tile first */
+  const grid = document.getElementById('dwKpiGrid');
+  const totalTile = document.createElement('div');
+  totalTile.className = 'dw-kpi dw-kpi-dynamic rounded-lg p-3';
+  totalTile.style.background   = '#f3f4f6';
+  totalTile.style.borderColor  = '#d1d5db';
+  totalTile.style.border = '1px solid';
+
+  totalTile.innerHTML = `
+    <div class="flex items-center gap-2 mb-1">
+      <i class="fa-solid fa-chart-line text-gray-600"></i>
+      <span class="text-sm font-medium text-gray-700">Total Leads</span>
+    </div>
+    <div class="text-2xl font-bold text-gray-900">${totalVolume}</div>
+  `;
+  grid.appendChild(totalTile);
+
+  /* Add dynamic label KPI tiles for all database labels */
+  dwAllLabels.forEach(lb => {
+    const total = dwLastRows.reduce((a, r) => {
+      const found = (r.labels || []).find(l => l.name === lb.name);
+      return a + (found ? found.count : 0);
+    }, 0);
+
+    const tile = document.createElement('div');
+    tile.className = 'dw-kpi dw-kpi-dynamic rounded-lg p-3';
+    tile.style.background   = hexLight(lb.color);
+    tile.style.borderColor  = hexBorder(lb.color);
+    tile.style.border = '1px solid';
+
+    tile.innerHTML = `
+      <div class="flex items-center gap-2 mb-1">
+        <i class="fa-solid fa-tag" style="color:${lb.color}"></i>
+        <span class="text-sm font-medium" style="color:${lb.color}">${escHtml(lb.name)}</span>
+      </div>
+      <div class="text-2xl font-bold" style="color:${lb.color}">${total}</div>
+    `;
+    grid.appendChild(tile);
+  });
+}
+
+/* ── Label chip summary ── */
+function renderLabelChips() {
+  const chipRow = document.getElementById('dwLabelChips');
+
+  /* Build totals */
+  const totals = {};
+  dwAllLabels.forEach(lb => { totals[lb.name] = 0; });
+  dwLastRows.forEach(r => {
+    (r.labels || []).forEach(lb => {
+      totals[lb.name] = (totals[lb.name] || 0) + lb.count;
+    });
+  });
+
+  const entries = dwAllLabels.filter(lb => totals[lb.name] > 0);
+
+  if (entries.length === 0) {
+    chipRow.style.display = 'none';
+    return;
+  }
+
+  chipRow.style.display = 'flex';
+  chipRow.innerHTML = entries.map(lb => `
+    <div class="px-3 py-1 rounded-full text-xs font-medium"
+         style="background:${hexLight(lb.color)}; color:${lb.color}; border: 1px solid ${hexBorder(lb.color)}">
+      ${escHtml(lb.name)}&nbsp;<strong>${totals[lb.name]}</strong>
+    </div>
+  `).join('');
+}
+
+/* ── Table render ── */
+function renderTable() {
+  if (dwLastRows.length === 0) {
+    document.getElementById('dwTableBody').innerHTML =
+      `<tr><td colspan="2">
+         <td colspan="2" class="px-4 py-8 text-center text-gray-500">
+           <i class="fa-solid fa-calendar-xmark mr-2"></i>No data for this range
+         </td>
+       </td></tr>`;
+    return;
+  }
+
+  /* Build thead with dynamic label columns */
+  const labelNames = dwAllLabels.map(l => l.name);
+  const colSpan    = 1 + labelNames.length + 1;   /* date + labels + vol */
+
+  const labelTh = labelNames.map((n, i) => {
+    const color = (dwAllLabels[i] || {}).color || '#888';
+    return `<th class="px-4 py-2 text-center text-xs font-medium text-gray-500 uppercase whitespace-nowrap" style="white-space:nowrap">
+              <span style="display:inline-flex;align-items:center;gap:4px">
+                <span style="width:7px;height:7px;border-radius:50%;background:${color};display:inline-block;flex-shrink:0"></span>
+                ${escHtml(n)}
+              </span>
+            </th>`;
+  }).join('');
+
+  document.getElementById('dwTableHead').innerHTML = `
+    <tr>
+      <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
+      ${labelTh}
+      <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Volume</th>
+    </tr>`;
+
+  const maxTotal = Math.max(...dwLastRows.map(r => {
+    return (r.labels || []).reduce((sum, l) => sum + l.count, 0);
+  }), 1);
+
+  document.getElementById('dwTableBody').innerHTML = dwLastRows.map(r => {
+    const d     = new Date(r.date + 'T00:00:00');
+    const label = d.toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' });
+    const total = (r.labels || []).reduce((sum, l) => sum + l.count, 0);
+    const pct   = Math.round(total / maxTotal * 100);
+
+    const labelCells = labelNames.map((n, i) => {
+      const lb    = (r.labels || []).find(l => l.name === n);
+      const count = lb ? lb.count : 0;
+      const color = (dwAllLabels[i] || {}).color || '#888';
+      return `<td class="px-4 py-2 text-center text-sm">
+                <span class="px-2 py-1 rounded-full text-xs font-medium"
+                      style="background:${hexLight(color)};color:${color};border:1px solid ${hexBorder(color)}">
+                  ${count}
+                </span>
+              </td>`;
+    }).join('');
+
+    return `
+      <tr>
+        <td class="px-4 py-2 text-sm font-medium text-gray-900 whitespace-nowrap">${label}</td>
+        ${labelCells}
+        <td class="px-4 py-2 text-sm">
+          <div style="display:flex;align-items:center;gap:6px">
+            <div style="flex:1;height:6px;background:#e5e7eb;border-radius:3px;overflow:hidden">
+              <div style="width:${pct}%;height:100%;background:#3b82f6"></div>
+            </div>
+            <span style="font-size:10px;color:#9ca3af;min-width:26px">${pct}%</span>
+          </div>
+        </td>
+      </tr>`;
+  }).join('');
+}
+
+/* ── Chart render ── */
+function renderChart() {
+  if (dwChartInst) { dwChartInst.destroy(); dwChartInst = null; }
+  if (dwLastRows.length === 0) return;
+
+  const xLabels = dwLastRows.map(r => {
+    const d = new Date(r.date + 'T00:00:00');
+    return d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
+  });
+
+  /* Dynamic label datasets only */
+  const datasets = [];
+  dwAllLabels.forEach(lb => {
+    datasets.push({
+      label:           lb.name,
+      data:            dwLastRows.map(r => { const f = (r.labels || []).find(l => l.name === lb.name); return f ? f.count : 0; }),
+      backgroundColor: lb.color || '#888',
+      borderRadius:    3,
+      borderSkipped:   false,
+    });
+  });
+
+  dwChartInst = new Chart(document.getElementById('dwChart'), {
+    type: 'bar',
+    data: { labels: xLabels, datasets },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { display: true } },
+      scales: {
+        x: {
+          grid: { display: false },
+          ticks: { font: { size: 10 }, autoSkip: false, maxRotation: 45 }
+        },
+        y: {
+          beginAtZero: true,
+          grid: { color: 'rgba(0,0,0,0.05)' },
+          ticks: { font: { size: 10 }, stepSize: 1 }
+        }
+      }
+    }
+  });
+}
+
+/* ── Tab switch ── */
+function dwSwitchTab(tab) {
+  dwCurrentTab = tab;
+  const tableBtn = document.getElementById('dwTabTable');
+  const chartBtn = document.getElementById('dwTabChart');
+  const tableView = document.getElementById('dwTableView');
+  const chartView = document.getElementById('dwChartView');
+  
+  if (tableBtn && chartBtn) {
+    tableBtn.classList.toggle('bg-brand', tab === 'table');
+    tableBtn.classList.toggle('text-white', tab === 'table');
+    tableBtn.classList.toggle('bg-gray-100', tab !== 'table');
+    tableBtn.classList.toggle('text-gray-700', tab !== 'table');
+    
+    chartBtn.classList.toggle('bg-brand', tab === 'chart');
+    chartBtn.classList.toggle('text-white', tab === 'chart');
+    chartBtn.classList.toggle('bg-gray-100', tab !== 'chart');
+    chartBtn.classList.toggle('text-gray-700', tab !== 'chart');
+  }
+  
+  if (tableView) tableView.style.display = tab === 'table' ? '' : 'none';
+  if (chartView) chartView.style.display = tab === 'chart' ? '' : 'none';
+  
+  if (tab === 'chart' && dwLastRows.length) renderChart();
+}
+</script>
+{% endblock %}
