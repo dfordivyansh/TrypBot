@@ -22,7 +22,7 @@ django-jazzmin==3.0.4
 djangorestframework==3.17.1
 et_xmlfile==2.0.0
 google-ai-generativelanguage==0.6.15
-google-api-core==2.30.3
+google-api-core>=2.30.3
 google-api-python-client==2.196.0
 google-auth==2.52.0
 google-auth-httplib2==0.4.0
@@ -46,7 +46,7 @@ openpyxl==3.1.5
 packaging==26.2
 pandas==3.0.2
 proto-plus==1.28.0
-protobuf==5.29.6
+protobuf>=6.33.5
 pyasn1==0.6.3
 pyasn1_modules==0.4.2
 pycparser==3.0
