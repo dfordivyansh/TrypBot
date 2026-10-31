@@ -193,9 +193,17 @@
       <a href="{% url 'crm_chat_home' %}"
          title="Chats"
          class="sidebar-link flex flex-col items-center gap-0.5 w-full py-2.5 px-1 hover:bg-white/10 transition-colors
-                {% if request.resolver_match.url_name == 'crm_chat_home' or request.resolver_match.url_name == 'crm_chat_detail' %}bg-white/15{% endif %}">
+                {% if module != 'booking' %}{% if request.resolver_match.url_name == 'crm_chat_home' or request.resolver_match.url_name == 'crm_chat_detail' %}bg-white/15{% endif %}{% endif %}">
         <i class="fa-solid fa-comments text-lg"></i>
         <span class="text-[9px] leading-none opacity-80">Chats</span>
+      </a>
+      <!-- Booking: chats with a website booking (cab / 1-2 day tour with payment) -->
+      <a href="{% url 'crm_chat_home' %}?module=booking"
+         title="Booking"
+         class="sidebar-link flex flex-col items-center gap-0.5 w-full py-2.5 px-1 hover:bg-white/10 transition-colors
+                {% if module == 'booking' %}bg-white/15{% endif %}">
+        <i class="fa-solid fa-ticket text-lg"></i>
+        <span class="text-[9px] leading-none opacity-80">Booking</span>
       </a>
       <!-- Lead Analysis: admin sees all, team leader their team, sales person their own -->
       <a href="{% url 'crm_lead_analysis' %}"

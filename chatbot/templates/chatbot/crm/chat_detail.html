@@ -457,6 +457,34 @@ html, body {
   to   { opacity: 1; transform: translateX(0); }
 }
 </style>
+{% if module == "booking" %}
+<style>
+/* ═══════════════════════════════════════════════
+   BOOKING — same page as Chats, in blue
+   ═══════════════════════════════════════════════ */
+#sidebar { background: #1e3a8a !important; }
+.bg-\[\#00a86b\], .bg-\[\#25D366\], .bg-\[\#128C7E\], .bg-green-500, .bg-green-600, .bg-emerald-500 { background-color: #2563eb !important; }
+.bg-\[\#075e54\] { background-color: #1e3a8a !important; }
+.hover\:bg-\[\#128C7E\]:hover, .hover\:bg-\[\#009660\]:hover, .hover\:bg-green-600:hover { background-color: #1d4ed8 !important; }
+.text-\[\#00a86b\], .text-\[\#25D366\], .text-\[\#128C7E\], .text-\[\#00695c\], .text-\[\#1d6f42\],
+.text-green-600, .text-green-700, .text-emerald-600, .text-emerald-700 { color: #2563eb !important; }
+.bg-\[\#dcf8c6\] { background-color: #dbeafe !important; }
+.text-\[\#dcf8c6\] { color: #dbeafe !important; }
+.bg-\[\#e0f2f1\], .bg-\[\#e6f6ef\], .bg-green-50, .bg-emerald-50 { background-color: #eff6ff !important; }
+.border-\[\#b2dfdb\], .border-green-100, .border-green-200, .border-emerald-100 { border-color: #bfdbfe !important; }
+.border-\[\#25D366\], .border-\[\#00a86b\], .focus\:border-\[\#25D366\]:focus { border-color: #2563eb !important; }
+.ring-\[\#25D366\], .focus\:ring-\[\#25D366\]\/20:focus { --tw-ring-color: rgb(37 99 235 / .25) !important; }
+.accent-\[\#25D366\], .accent-\[\#00a86b\], .fs-pick-row input { accent-color: #2563eb !important; }
+#conv-drawer.as-page #searchWrap, .fs-add, #newChatFab, .msg-file-block .file-icon, .upload-progress { background: #2563eb !important; }
+#newChatFab:hover { background: #1d4ed8 !important; }
+.fs-title, .fs-date i, .fs-actions button, .fs-badge { color: #2563eb !important; }
+.fs-field:focus, #newChatSheet .nc-box, #newChatSheet .nc-input:focus { border-color: #2563eb !important; }
+.tpl-row:hover:not(:disabled) { background: #eff6ff !important; }
+.conv-item-active { background: rgba(219, 234, 254, .7) !important; border-left-color: #2563eb !important; }
+.ws-toast.msg { border-left-color: #2563eb !important; }
+@media (max-width: 767px) { .crm-mobile-bar { background: #2563eb !important; } }
+</style>
+{% endif %}
 {% endblock %}
 
 
@@ -489,7 +517,7 @@ html, body {
     <button type="button" onclick="toggleCrmNav(true)" aria-label="Menu" class="p-1">
       <i class="fa-solid fa-bars text-xl"></i>
     </button>
-    <span class="text-xl font-extrabold tracking-wide flex-1 text-center">TRYPBOT</span>
+    <span class="text-xl font-extrabold tracking-wide flex-1 text-center">{% if module == "booking" %}BOOKING{% else %}TRYPBOT{% endif %}</span>
     <button type="button" onclick="hardRefresh(this.firstElementChild)" class="p-1 mr-3" aria-label="Hard refresh" title="Hard refresh">
       <i class="fa-solid fa-rotate-right text-lg"></i>
     </button>
@@ -559,7 +587,7 @@ html, body {
     <span class="text-xs text-blue-600 font-medium">
       <i class="fa-regular fa-calendar text-[10px] mr-1"></i>Showing: {{ selected_date|date:"d M Y" }}
     </span>
-    <a href="{% if active_session %}{% url 'crm_chat_detail' active_session.id %}{% else %}{% url 'crm_chat_home' %}{% endif %}?filter={{ active_filter }}"
+    <a href="{% if active_session %}{% url 'crm_chat_detail' active_session.id %}{% else %}{% url 'crm_chat_home' %}{% endif %}?filter={{ active_filter }}{% if module == 'booking' %}&module=booking{% endif %}"
        class="text-xs text-blue-500 hover:underline font-medium">Clear</a>
   </div>
   {% endif %}
@@ -569,6 +597,7 @@ html, body {
     <form method="get"
       action="{% if active_session %}{% url 'crm_chat_detail' active_session.id %}{% else %}{% url 'crm_chat_home' %}{% endif %}"
       class="flex items-center gap-2">
+      {% if module == "booking" %}<input type="hidden" name="module" value="booking">{% endif %}
       <div class="flex-1 relative">
         <i class="fa-solid fa-search absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-xs"></i>
         <input type="text" name="q" value="{{ search_q }}" id="searchInput"
@@ -1049,7 +1078,7 @@ html, body {
               {% if msg.message_status == 'sent' %}
                 <i class="fa-solid fa-check text-gray-400"></i>
               {% elif msg.message_status == 'delivered' %}
-                <i class="fa-solid fa-check-double text-[#4db0f5]"></i>
+                <i class="fa-solid fa-check-double text-gray-400"></i>
               {% elif msg.message_status == 'read' %}
                 <i class="fa-solid fa-check-double text-blue-500"></i>
               {% elif msg.message_status == 'failed' %}
@@ -1921,10 +1950,12 @@ function toggleMoreMenu() {
 }
 
 const BASE_CHAT_URL = "{% if active_session %}{% url 'crm_chat_detail' active_session.id %}{% else %}{% url 'crm_chat_home' %}{% endif %}";
+const LIST_MODULE = "{{ module|default:'chats' }}";   // "booking": CRM -> Booking list
 
 function applyFilter(val) {
   const url = new URL(BASE_CHAT_URL, window.location.origin);
   url.searchParams.set('filter', val);
+  if (LIST_MODULE === 'booking') url.searchParams.set('module', 'booking');
   window.location.href = url.toString();
 }
 function applyDateFilter(val) {
@@ -2034,15 +2065,15 @@ function handleWsMessageStatus(data) {
   if (!msgRow) return;
   
   const statusEl = msgRow.querySelector('.msg-status');
-  if (!statusEl) return;
-  
+  if (!statusEl || statusEl.dataset.status === data.status) return;
+
   statusEl.dataset.status = data.status;
   
   let iconHtml = '';
   if (data.status === 'sent') {
     iconHtml = '<i class="fa-solid fa-check text-gray-400"></i>';
   } else if (data.status === 'delivered') {
-    iconHtml = '<i class="fa-solid fa-check-double text-[#4db0f5]"></i>';
+    iconHtml = '<i class="fa-solid fa-check-double text-gray-400"></i>';
   } else if (data.status === 'read') {
     iconHtml = '<i class="fa-solid fa-check-double text-blue-500"></i>';
   } else if (data.status === 'failed') {
@@ -2139,6 +2170,7 @@ let knownMessageIds = new Set();
 let knownLabelChangeIds = new Set();
 
 function checkForNewAssignments() {
+  if (document.hidden) return;
   fetch('/crm/check-assignments/')
     .then(r => r.json())
     .then(data => {
@@ -2462,8 +2494,8 @@ function uploadFile(file, caption) {
         if (metaEl) metaEl.textContent = data.message.time;
         const statusEl = tempEl.querySelector('.msg-status');
         if (statusEl) {
-          statusEl.innerHTML = '<i class="fa-solid fa-check-double text-[#4db0f5]"></i>';
-          statusEl.dataset.status = 'delivered';
+          statusEl.innerHTML = '<i class="fa-solid fa-check text-gray-400"></i>';
+          statusEl.dataset.status = 'sent';
         }
         if (isImage && data.message.media_url) {
           const img = tempEl.querySelector('img.msg-img');
@@ -2569,7 +2601,7 @@ function appendTextMessage(opts) {
               ${opts.status === 'sent' || opts.sending
                 ? '<i class="fa-solid fa-check text-gray-400"></i>'
                 : opts.status === 'delivered'
-                ? '<i class="fa-solid fa-check-double text-[#4db0f5]"></i>'
+                ? '<i class="fa-solid fa-check-double text-gray-400"></i>'
                 : opts.status === 'read'
                 ? '<i class="fa-solid fa-check-double text-blue-500"></i>'
                 : opts.status === 'failed'
@@ -2695,10 +2727,17 @@ function autoResize(el) {
 // ═══════════════════════════════════════════════════════════════
 //  LIVE POLLING
 // ═══════════════════════════════════════════════════════════════
-setInterval(() => {
+// Every 5 s while the page is on screen; a hidden tab / locked phone doesn't
+// poll, and coming back checks at once.
+function pollLiveMessages() {
+  if (document.hidden) return;
   fetch(`${LIVE_MSG_URL}?after=${lastMsgId}`)
     .then(r => r.json())
     .then(data => {
+      // Ticks of the recent sent messages, for everyone viewing the chat
+      // (the WebSocket push only reaches the assigned agent).
+      Object.entries(data.statuses || {}).forEach(([id, status]) =>
+        handleWsMessageStatus({ message_id: id, status }));
       if (!data.messages) return;
       data.messages.forEach(m => {
         if (+m.id <= +lastMsgId) return;
@@ -2719,7 +2758,9 @@ setInterval(() => {
         });
       });
     }).catch(() => {});
-}, 3000);
+}
+setInterval(pollLiveMessages, 5000);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) pollLiveMessages(); });
 
 
 // ═══════════════════════════════════════════════════════════════
@@ -3408,10 +3449,11 @@ function applyListFilters() {
   const agent = document.getElementById('fsAgent').value;
   if (agent) q.set('agent', agent);
   q.set('type', document.getElementById('fsType').value);
+  if (LIST_MODULE === 'booking') q.set('module', 'booking');
   location.href = LIST_URL + '?' + q.toString();
 }
 
-function clearListFilters() { location.href = LIST_URL; }
+function clearListFilters() { location.href = LIST_URL + (LIST_MODULE === 'booking' ? '?module=booking' : ''); }
 
 
 // ═══════════════════════════════════════════════════════════════

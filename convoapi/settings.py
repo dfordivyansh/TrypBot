@@ -113,7 +113,12 @@ DATABASES = {
             # CRM pages and status updates all hit the DB at once), and
             # IMMEDIATE takes the write lock up front instead of failing
             # half-way with "database is locked".
-            'init_command': 'PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL;',
+            # cache_size (20 MB), temp_store and mmap_size: more of the DB
+            # stays in memory, fewer disk reads for the CRM lists and counts.
+            'init_command': (
+                'PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL; '
+                'PRAGMA cache_size=-20000; PRAGMA temp_store=MEMORY; PRAGMA mmap_size=134217728;'
+            ),
             'transaction_mode': 'IMMEDIATE',
         },
     }
@@ -202,14 +207,12 @@ CACHES = {
         'BACKEND': 'django.core.cache.backends.redis.RedisCache',
         'LOCATION': 'redis://127.0.0.1:6379/1',
         'TIMEOUT': 300,
-        'OPTIONS': {
-            'CLIENT_CLASS': 'django_redis.client.DefaultClient',
-        }
+        # Keys are prefixed so they don't clash with other data in Redis.
+        # (No CLIENT_CLASS: that is a django-redis option; Django's own Redis
+        # backend passed it to redis-py and failed on the first cache call.)
+        'KEY_PREFIX': 'trypbot',
     }
 }
-
-# Cache key prefix to avoid conflicts
-CACHE_KEY_PREFIX = 'trypbot'
 
 CORS_ALLOW_ALL_ORIGINS = False
 
@@ -262,7 +265,7 @@ WHATSAPP_VERIFY_TOKEN = os.environ.get("WHATSAPP_VERIFY_TOKEN", "")
 WHATSAPP_AI_REPLIES = os.environ.get("WHATSAPP_AI_REPLIES", "0").lower() in ("1", "true", "yes")
 WHATSAPP_AUTO_REPLY_TEXT = os.environ.get(
     "WHATSAPP_AUTO_REPLY_TEXT",
-    "Thank you for contacting TrypDeals! 🙏\n"
+    "Thank you for contacting TrypDeals!\n"
     "Our travel expert will connect with you shortly.",
 )
 

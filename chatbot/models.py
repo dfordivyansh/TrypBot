@@ -20,6 +20,7 @@ Changes from v15.0
 
 from django.db import models
 from django.contrib.auth.models import User
+from django.utils import timezone
 import uuid
 
 
@@ -1229,3 +1230,51 @@ class LeadCategoryRule(models.Model):
 
     def __str__(self):
         return self.get_category_display()
+
+
+# =========================================================
+# BOOKING (www.trypdeals.com cab / short tour with a PayU advance)
+# =========================================================
+
+class Booking(models.Model):
+    """
+    One row per website booking code (TD-XXXXXX), kept up to date by the
+    booking webhook (website_bookings.save_booking). Listed on CRM -> Booking.
+    """
+
+    PAYMENT_STATUS_CHOICES = [
+        ("pending", "Pending"),
+        ("paid", "Paid"),
+        ("failed", "Failed"),
+        ("amount_mismatch", "Paid (amount mismatch)"),
+    ]
+    TYPE_CHOICES = [
+        ("cab", "Cab"),
+        ("tour", "Tour"),
+    ]
+
+    code = models.CharField(max_length=20, unique=True)
+    session = models.ForeignKey(
+        "ChatSession", on_delete=models.SET_NULL, null=True, blank=True, related_name="bookings",
+    )
+    booking_type = models.CharField(max_length=10, choices=TYPE_CHOICES, default="tour")
+    category = models.CharField(max_length=30, choices=LeadCategoryRule.CATEGORY_CHOICES, default="personal_tour")
+    title = models.CharField(max_length=255, blank=True, default="")
+    customer_name = models.CharField(max_length=255, blank=True, default="")
+    phone = models.CharField(max_length=20, blank=True, default="", db_index=True)
+    email = models.CharField(max_length=254, blank=True, default="")
+    travel_date = models.CharField(max_length=100, blank=True, default="")
+    travellers = models.PositiveIntegerField(default=0)
+    amount = models.PositiveIntegerField(default=0, help_text="Advance amount (Rs.)")
+    estimated_total = models.PositiveIntegerField(default=0, help_text="Estimated package / cab fare (Rs.)")
+    payment_status = models.CharField(max_length=20, choices=PAYMENT_STATUS_CHOICES, default="pending", db_index=True)
+    paid_at = models.DateTimeField(null=True, blank=True)
+    data = models.JSONField(default=dict, blank=True, help_text="The booking as the website sent it")
+    created_at = models.DateTimeField(default=timezone.now, db_index=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"{self.code} - {self.title or self.get_booking_type_display()}"

@@ -699,10 +699,18 @@ def handle_message_status(status_data):
         except Exception as e:
             print(f"[CAMPAIGN] status hook error: {e}")
         
-        # Update message status in database
+        # Update message status in database. Meta can send the receipts out of
+        # order (a late "delivered" after "read"), so a tick only moves forward:
+        # sent -> delivered -> read. "failed" can't replace delivered / read.
+        not_after = {
+            "sent":      ["sent", "delivered", "read"],
+            "delivered": ["delivered", "read"],
+            "read":      ["read"],
+            "failed":    ["failed", "delivered", "read"],
+        }[new_status]
         updated = ChatMessage.objects.filter(
             whatsapp_message_id=message_id
-        ).update(message_status=new_status)
+        ).exclude(message_status__in=not_after).update(message_status=new_status)
         
         if updated:
             print(f"Updated {updated} message(s) to status: {new_status}")
@@ -746,8 +754,8 @@ def handle_message_status(status_data):
                 except Exception as e:
                     print(f"Spam detection error: {e}")
         else:
-            print(f"No message found with ID: {message_id}")
-            
+            print(f"No message to update for ID {message_id} (unknown, or already {new_status} or later)")
+
     except Exception as e:
         print(f"Error handling message status: {e}")
 
@@ -2261,6 +2269,12 @@ def website_booking_webhook(request):
         try:
             was_takeover = session.is_human_takeover
             mark_lead_today(session)
+            if status == "paid":
+                # Paid: to the category's people (Aarti for cab / 1-2 day
+                # tours) even if the chat was with someone else.
+                from .crm_helpers import assign_paid_booking
+                session.refresh_from_db()
+                assign_paid_booking(session)
             if not was_takeover:
                 ChatSession.objects.filter(pk=session.pk).update(is_human_takeover=False)
         except Exception as exc:

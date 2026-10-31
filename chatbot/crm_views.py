@@ -29,12 +29,13 @@ from django.http import JsonResponse
 from django.core.paginator import Paginator
 from django.utils import timezone
 from django.db import transaction
-from django.db.models import Count, Q
+from django.db.models import Count, Exists, OuterRef, Q
 from django.db.models.functions import TruncDate
 from django.http import JsonResponse
 from django.views.decorators.http import require_GET
 
 from django.conf import settings
+from django.core.cache import cache
 from django.contrib.auth import authenticate, login, logout
 from django.contrib.auth.models import User
 from django.core.files.base import ContentFile
@@ -50,6 +51,7 @@ from django.views.decorators.http import require_GET, require_POST
 from .decorators import crm_login_required
 from .forms import CRMLoginForm, NoteForm, ReminderForm
 from .models import (
+    Booking,
     ChatMessage,
     ChatSession,
     ConversationLabel,
@@ -211,6 +213,16 @@ def assign_users_for(user, role, sales_users):
     return User.objects.filter(pk__in=assignable_user_ids(user), is_active=True)
 
 
+def _day_start(day):
+    """Midnight (India time) at the start of a date, as an aware datetime."""
+    return timezone.make_aware(datetime.combine(day, datetime.min.time()))
+
+
+def _on_day(field, day):
+    """Filter kwargs for one local day. Unlike field__date, it can use an index."""
+    return {f"{field}__gte": _day_start(day), f"{field}__lt": _day_start(day + timedelta(days=1))}
+
+
 def can_download_data(user):
     """Only admins download data (contacts, lead analysis and campaign exports)."""
     return get_user_role(user) == "admin"
@@ -232,25 +244,45 @@ def _generate_session_id(phone):
     return f"crm_{phone}_{uuid.uuid4().hex[:8]}"
 
 
-def build_session_list(request, role=None, apply_date_filter=True):
+BOOKING_MODULE = "booking"
+
+
+def _has_booking():
+    return Exists(Booking.objects.filter(session=OuterRef("pk")))
+
+
+def list_module(request, session=None):
+    """
+    Which chat list is shown: "booking" (chats with a website booking, CRM ->
+    Booking) or "chats" (all the others). ?module=booking, or the open chat's.
+    """
+    module = request.GET.get("module", "")
+    if module in (BOOKING_MODULE, "chats"):
+        return module
+    if session is not None and Booking.objects.filter(session=session).exists():
+        return BOOKING_MODULE
+    return "chats"
+
+
+def build_session_list(request, role=None, apply_date_filter=True, module="chats"):
     if role is None:
         role = get_user_role(request.user)
 
     filter_param = request.GET.get("filter", "all")
     search_q     = request.GET.get("q", "").strip()
 
+    # The list shows only these related rows. No prefetch of messages: that
+    # loaded every message (with its raw payload) of every chat on the page.
     sessions = ChatSession.objects.select_related(
         "assigned_sales_person",
         "conv_status",
         "conv_status__label",
         "lead",
-    ).prefetch_related(
-        "engagement",
-        "tags",
-        "messages",
     ).order_by("-updated_at")
 
     sessions = filter_sessions_for_user(sessions, request.user, role)
+    # Booking chats have their own list (CRM -> Booking), not in Chats.
+    sessions = sessions.filter(_has_booking() if module == BOOKING_MODULE else ~_has_booking())
 
     if search_q:
         sessions = sessions.filter(
@@ -282,7 +314,7 @@ def build_session_list(request, role=None, apply_date_filter=True):
             if parsed:
                 selected_date      = parsed
                 date_filter_active = True
-                sessions = sessions.filter(updated_at__date=selected_date)
+                sessions = sessions.filter(**_on_day("updated_at", selected_date))
 
     sessions = apply_list_filters(request, sessions)
 
@@ -298,9 +330,9 @@ def apply_list_filters(request, sessions):
     start = parse_date(request.GET.get("start", "").strip() or "")
     end   = parse_date(request.GET.get("end", "").strip() or "")
     if start:
-        sessions = sessions.filter(updated_at__date__gte=start)
+        sessions = sessions.filter(updated_at__gte=_day_start(start))
     if end:
-        sessions = sessions.filter(updated_at__date__lte=end)
+        sessions = sessions.filter(updated_at__lt=_day_start(end + timedelta(days=1)))
 
     label_ids = [int(x) for x in request.GET.get("labels", "").split(",") if x.strip().isdigit()]
     if label_ids:
@@ -334,25 +366,38 @@ def list_filters_active(request):
     return n
 
 
+STATS_CACHE_SECONDS = 30
+STATUS_POLL_LIMIT = 50   # sent messages whose ticks the open chat refreshes
+
+
 def _stats_for_user(user, role):
-    base_qs = ChatSession.objects.all()
-    base_qs = filter_sessions_for_user(base_qs, user, role)
+    """Header counts. One query instead of six, cached for a few seconds per user."""
+    cache_key = f"crm_stats:{user.pk}:{role}"
+    try:
+        stats = cache.get(cache_key)
+    except Exception:
+        stats = None
+    if stats is not None:
+        return stats
 
-    visible_session_ids = base_qs.values_list("id", flat=True)
+    base_qs = filter_sessions_for_user(ChatSession.objects.all(), user, role)
+    stats = base_qs.aggregate(
+        total_leads=Count("id"),
+        open_leads=Count("id", filter=Q(conv_status__closed=False) | Q(conv_status__isnull=True)),
+        hot_leads=Count("id", filter=Q(conv_status__label__name="HOT")),
+        pending_leads=Count("id", filter=Q(conv_status__label__name="PENDING")),
+        paid_leads=Count("id", filter=Q(conv_status__label__name="PAID")),
+    )
+    today_msgs = ChatMessage.objects.filter(**_on_day("created_at", timezone.localdate()))
+    if role == "sales":
+        today_msgs = today_msgs.filter(session__in=base_qs)
+    stats["today_msgs"] = today_msgs.count()
 
-    return {
-        "total_leads":   base_qs.count(),
-        "open_leads":    base_qs.filter(
-            Q(conv_status__closed=False) | Q(conv_status__isnull=True)
-        ).count(),
-        "hot_leads":     base_qs.filter(conv_status__label__name="HOT").count(),
-        "pending_leads": base_qs.filter(conv_status__label__name="PENDING").count(),
-        "paid_leads":    base_qs.filter(conv_status__label__name="PAID").count(),
-        "today_msgs":    ChatMessage.objects.filter(
-            session_id__in=visible_session_ids,
-            created_at__date=timezone.now().date(),
-        ).count(),
-    }
+    try:
+        cache.set(cache_key, stats, STATS_CACHE_SECONDS)
+    except Exception:
+        pass
+    return stats
 
 
 # =========================================================
@@ -576,9 +621,9 @@ def crm_dashboard(request):
 def crm_chat_home(request):
     role = get_user_role(request.user)
 
-    sessions, active_filter, selected_date, date_filter_active = build_session_list(request, role)
+    module = list_module(request)
+    sessions, active_filter, selected_date, date_filter_active = build_session_list(request, role, module=module)
     search_q = request.GET.get("q", "")
-    stats    = _stats_for_user(request.user, role)
     labels   = ConversationLabel.objects.all()
 
     if role == "sales":
@@ -601,8 +646,9 @@ def crm_chat_home(request):
     page_obj = Paginator(sessions, CONV_PAGE_SIZE).get_page(request.GET.get("page", 1))
 
     return render(request, "chatbot/crm/chat_detail.html", {
-        "conv_next_url":      _conv_next_url(request, page_obj),
-        "list_qs":            _conv_list_querystring(request),
+        "module":             module,
+        "conv_next_url":      _conv_next_url(request, page_obj, module),
+        "list_qs":            _conv_list_querystring(request, module),
         "list_filters_on":    list_filters_active(request),
         "whatsapp_number":    getattr(settings, "WHATSAPP_DISPLAY_NUMBER", ""),
         "active_session":     None,
@@ -614,7 +660,6 @@ def crm_chat_home(request):
         "sales_users":        sales_users,
         "assign_users":       assign_users_for(request.user, role, sales_users),
         "sessions":           page_obj,
-        "stats":              stats,
         "active_filter":      active_filter,
         "search_q":           search_q,
         "note_form":          NoteForm(),
@@ -697,9 +742,10 @@ def crm_chat_detail(request, session_id):
             salesprofile__isnull=False
         ).select_related("salesprofile")
 
-    sessions, active_filter, selected_date, date_filter_active = build_session_list(request, role)
+    # A booking chat opens in the Booking list, the others in Chats.
+    module = list_module(request, session)
+    sessions, active_filter, selected_date, date_filter_active = build_session_list(request, role, module=module)
     search_q = request.GET.get("q", "")
-    stats    = _stats_for_user(request.user, role)
     page_obj = Paginator(sessions, CONV_PAGE_SIZE).get_page(request.GET.get("page", 1))
 
     # Calculate 24-hour window status
@@ -732,8 +778,9 @@ def crm_chat_detail(request, session_id):
         has_opt_in = False
 
     return render(request, "chatbot/crm/chat_detail.html", {
-        "conv_next_url":      _conv_next_url(request, page_obj),
-        "list_qs":            _conv_list_querystring(request),
+        "module":             module,
+        "conv_next_url":      _conv_next_url(request, page_obj, module),
+        "list_qs":            _conv_list_querystring(request, module),
         "list_filters_on":    list_filters_active(request),
         "whatsapp_number":    getattr(settings, "WHATSAPP_DISPLAY_NUMBER", ""),
         "lead_forms":         _lead_form_cards(session),
@@ -747,7 +794,6 @@ def crm_chat_detail(request, session_id):
         "sales_users":        sales_users,
         "assign_users":       assign_users_for(request.user, role, sales_users),
         "sessions":           page_obj,
-        "stats":              stats,
         "active_filter":      active_filter,
         "search_q":           search_q,
         "note_form":          NoteForm(),
@@ -1032,13 +1078,14 @@ def crm_send_file(request, session_id):
 
     sent_ok    = False
     send_error = None
+    result     = None
     try:
         with default_storage.open(save_path, "rb") as f:
             f.name = uploaded.name
             whatsapp_media_id = upload_media_to_whatsapp(f, mime)
 
         if whatsapp_media_id:
-            send_whatsapp_media_message(
+            result, _ = send_whatsapp_media_message(
                 session.phone_number,
                 media_id=whatsapp_media_id,
                 msg_type=media_type,
@@ -1049,7 +1096,7 @@ def crm_send_file(request, session_id):
         else:
             # Use Cloudinary URL if available for images
             final_media_url = cloudinary_url if cloudinary_url else media_url
-            send_whatsapp_media_message(
+            result, _ = send_whatsapp_media_message(
                 session.phone_number,
                 media_url=final_media_url,
                 msg_type=media_type,
@@ -1065,10 +1112,17 @@ def crm_send_file(request, session_id):
             if caption:
                 fallback_text += f"\n{caption}"
             fallback_text += f"\n{media_url}"
-            send_whatsapp_message(session.phone_number, fallback_text)
+            result = send_whatsapp_message(session.phone_number, fallback_text)
             sent_ok = True
         except Exception:
             traceback.print_exc()
+
+    # WhatsApp's id for the message, so its delivered / read ticks reach this row.
+    if isinstance(result, dict):
+        wamid = (result.get("messages") or [{}])[0].get("id", "")
+        if wamid:
+            msg.whatsapp_message_id = wamid
+            msg.save(update_fields=["whatsapp_message_id"])
 
     preview_text         = f"{display_icon} {caption or uploaded.name}"
     session.last_message = preview_text
@@ -1664,8 +1718,11 @@ def crm_check_assignments(request):
         })
     
     # Check for label changes on assigned chats
+    # Only the chats whose label changed in the last minute (this runs every
+    # 30 s for every open CRM tab, so don't walk all of the user's chats).
     label_changes = []
-    for session in user_sessions:
+    for session in user_sessions.filter(conv_status__updated_at__gte=one_minute_ago,
+                                        conv_status__label__isnull=False):
         if session.conv_status and session.conv_status.label:
             if session.conv_status.updated_at and session.conv_status.updated_at >= one_minute_ago:
                 label_changes.append({
@@ -1931,18 +1988,20 @@ def crm_close_ticket(request, session_id):
 # CONVERSATION LIST — NEXT PAGE (infinite scroll)
 # =========================================================
 
-def _conv_list_querystring(request):
-    """filter / search / date of the current list, kept on links and next-page requests."""
+def _conv_list_querystring(request, module="chats"):
+    """filter / search / date / list (Booking) of the current list, kept on links and next-page requests."""
     from urllib.parse import urlencode
     keep = {k: request.GET.get(k) for k in ("filter", "q", "date") + LIST_FILTER_PARAMS if request.GET.get(k)}
+    if module == BOOKING_MODULE:
+        keep["module"] = BOOKING_MODULE
     return urlencode(keep)
 
 
-def _conv_next_url(request, page_obj):
+def _conv_next_url(request, page_obj, module="chats"):
     if not page_obj.has_next():
         return ""
     from django.urls import reverse
-    qs = _conv_list_querystring(request)
+    qs = _conv_list_querystring(request, module)
     return f"{reverse('crm_conversations_page')}?page={page_obj.next_page_number()}" + (f"&{qs}" if qs else "")
 
 
@@ -1951,14 +2010,15 @@ def _conv_next_url(request, page_obj):
 def crm_conversations_page(request):
     """The next CONV_PAGE_SIZE conversations of the sidebar list, as HTML rows."""
     role = get_user_role(request.user)
-    sessions, _, _, _ = build_session_list(request, role)
+    module = list_module(request)
+    sessions, _, _, _ = build_session_list(request, role, module=module)
     page_obj = Paginator(sessions, CONV_PAGE_SIZE).get_page(request.GET.get("page", 1))
     html = render(request, "chatbot/crm/_conv_items.html", {
         "sessions": page_obj,
         "active_session": None,
-        "list_qs": _conv_list_querystring(request),
+        "list_qs": _conv_list_querystring(request, module),
     }).content.decode("utf-8")
-    return JsonResponse({"html": html, "next_url": _conv_next_url(request, page_obj)})
+    return JsonResponse({"html": html, "next_url": _conv_next_url(request, page_obj, module)})
 
 
 # =========================================================
@@ -2085,7 +2145,14 @@ def crm_live_messages(request, session_id):
             "filename":    m.media_filename or "",
         })
 
-    return JsonResponse({"success": True, "messages": data})
+    # Current ticks of the last sent messages, so the open chat updates them.
+    statuses = dict(
+        ChatMessage.objects.filter(session_id=session_id)
+        .exclude(sender_type="user").exclude(whatsapp_message_id__isnull=True).exclude(whatsapp_message_id="")
+        .order_by("-id").values_list("id", "message_status")[:STATUS_POLL_LIMIT]
+    )
+
+    return JsonResponse({"success": True, "messages": data, "statuses": statuses})
 
 
 # =========================================================

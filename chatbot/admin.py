@@ -1,6 +1,7 @@
 from django.contrib import admin
 
 from .models import (
+    Booking,
     LeadCategoryRule,
     ChatSession,
     ChatMessage,
@@ -869,3 +870,13 @@ class LeadCategoryRuleAdmin(admin.ModelAdmin):
             if lead_category(session) in categories and assign_by_category(session):
                 done += 1
         self.message_user(request, f"Assigned {done} unassigned lead(s).")
+
+
+@admin.register(Booking)
+class BookingAdmin(admin.ModelAdmin):
+    """Website bookings (CRM -> Booking lists their chats)."""
+    list_display = ("code", "title", "customer_name", "phone", "category", "amount", "payment_status", "created_at")
+    list_filter = ("payment_status", "category", "booking_type")
+    search_fields = ("code", "customer_name", "phone", "title")
+    raw_id_fields = ("session",)
+    readonly_fields = ("created_at", "updated_at", "paid_at")

@@ -263,6 +263,33 @@ def assign_by_category(session):
         return None
 
 
+def assign_paid_booking(session):
+    """
+    A paid website booking goes to its category's people (Admin -> Lead
+    category rules), even when the chat is already with someone else.
+    Nothing changes if no active rule applies or the chat is already with one
+    of them. Returns the new assignee, or None.
+    """
+    from .models import LeadCategoryRule
+    from .crm_lead_signals import push_chat_assigned_notification
+
+    rule = LeadCategoryRule.objects.filter(category=lead_category(session), is_active=True).first()
+    if not rule:
+        return None
+    people = set(rule.sales_people.filter(is_active=True).values_list("id", flat=True))
+    if not people or session.assigned_sales_person_id in people:
+        return None
+    user = assign_by_category(session)
+    if user:
+        ConversationStatus.objects.filter(session=session).update(assigned_to=user)
+        print(f"[PAID BOOKING] session {session.id} moved to {user.username}")
+        try:
+            push_chat_assigned_notification(session, user)
+        except Exception as e:
+            print(f"[PAID BOOKING] notification error: {e}")
+    return user
+
+
 # =========================================================
 # DESTINATION-BASED ASSIGNMENT
 # =========================================================

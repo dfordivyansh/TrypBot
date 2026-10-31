@@ -174,6 +174,74 @@ def booking_context(b):
     return f"Quotation code {b.get('code')}\n" + "\n".join(summary_lines(b, for_customer=True))
 
 
+def _to_int(value):
+    try:
+        return max(0, int(float(value)))
+    except (TypeError, ValueError):
+        return 0
+
+
+def booking_title(b):
+    """Cab route or tour name of a booking dict."""
+    if b.get("type") == "cab":
+        cab = b.get("cab") or {}
+        return f"Cab {cab.get('from', '')} to {cab.get('to', '')}".strip()
+    return (b.get("tour") or {}).get("title") or "Tour"
+
+
+def booking_category(b):
+    """cab / tour_1day / tour_2day / personal_tour, like lead_category()."""
+    from .crm_helpers import _tour_days
+    if b.get("type") == "cab":
+        return "cab"
+    tour = b.get("tour") or {}
+    days = _tour_days(tour.get("duration"), tour.get("title"), tour.get("slug"))
+    return f"tour_{days}day" if days else "personal_tour"
+
+
+def record_booking(b, session, category=None, title=None, created_at=None):
+    """
+    Create / update the Booking row of a booking dict (CRM -> Booking).
+    created_at: when the booking first reached the CRM (backfill only).
+    """
+    from django.utils import timezone
+    from .campaign_engine import normalize_phone
+    from .models import Booking
+
+    code = str(b.get("code") or "").strip()
+    if not code:
+        return None
+    status = str(b.get("paymentStatus") or "pending")
+    if status not in dict(Booking.PAYMENT_STATUS_CHOICES):
+        status = "pending"
+    fields = {
+        "session": session,
+        "booking_type": "cab" if b.get("type") == "cab" else "tour",
+        "category": category or booking_category(b),
+        "title": (title or booking_title(b))[:255],
+        "customer_name": str(b.get("name") or "").strip()[:255],
+        "phone": (normalize_phone(b.get("mobile")) or "")[:20],
+        "email": str(b.get("email") or "").strip()[:254],
+        "travel_date": str(b.get("travelDate") or "")[:100],
+        "travellers": _to_int(b.get("travellers") or b.get("adults")),
+        "amount": _to_int(b.get("amount")),
+        "estimated_total": _to_int((b.get("estimate") or {}).get("total") or (b.get("cab") or {}).get("fareEstimate")),
+        "payment_status": status,
+        "data": b,
+    }
+    booking = Booking.objects.filter(code=code).first()
+    if booking is None:
+        booking = Booking(code=code, created_at=created_at or timezone.now())
+    elif session is None:
+        fields["session"] = booking.session
+    if status in ("paid", "amount_mismatch") and not booking.paid_at:
+        booking.paid_at = timezone.now() if created_at is None else created_at
+    for name, value in fields.items():
+        setattr(booking, name, value)
+    booking.save()
+    return booking
+
+
 def save_booking(b):
     """
     Save a website booking on the customer's chat (found or created by mobile
@@ -271,6 +339,8 @@ def save_booking(b):
         if note_line not in (lead.notes or ""):
             lead.notes = (f"{lead.notes}\n{note_line}" if lead.notes else note_line)[:5000]
         lead.save()
+
+        record_booking(record, session, category=data["lead_category"], title=what)
 
         if first_time or status_changed:
             title = ("New website booking" if first_time else "Website booking update") + f" {code}"
