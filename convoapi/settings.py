@@ -196,7 +196,10 @@ CHANNEL_LAYERS = {
     'default': {
         'BACKEND': 'channels_redis.core.RedisChannelLayer',
         'CONFIG': {
-            "hosts": [("127.0.0.1", 6379)],
+            # redis-py 8 times out every read after 5 s by default, exactly as
+            # long as channels_redis waits for a message (BZPOPMIN, 5 s): each
+            # WebSocket then died with "Timeout reading from 127.0.0.1:6379".
+            "hosts": [{"address": "redis://127.0.0.1:6379", "socket_timeout": 30}],
         },
     },
 }
