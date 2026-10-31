@@ -256,6 +256,16 @@ WHATSAPP_DISPLAY_NUMBER = os.environ.get("WHATSAPP_DISPLAY_NUMBER", "91876624771
 
 WHATSAPP_VERIFY_TOKEN = os.environ.get("WHATSAPP_VERIFY_TOKEN", "")
 
+# Off: the bot does not chat. A customer's message gets one fixed reply
+# (WHATSAPP_AUTO_REPLY_TEXT) and the chat goes to a sales agent with AI off.
+# On (1): the AI bot answers as before.
+WHATSAPP_AI_REPLIES = os.environ.get("WHATSAPP_AI_REPLIES", "0").lower() in ("1", "true", "yes")
+WHATSAPP_AUTO_REPLY_TEXT = os.environ.get(
+    "WHATSAPP_AUTO_REPLY_TEXT",
+    "Thank you for contacting TrypDeals! 🙏\n"
+    "Our travel expert will connect with you shortly.",
+)
+
 
 
 

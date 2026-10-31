@@ -24,7 +24,7 @@ from django.utils.dateparse import parse_date
 from django.views.decorators.http import require_GET, require_POST
 
 from . import campaign_engine as eng
-from .crm_views import get_user_role
+from .crm_views import can_download_data, get_user_role
 from .decorators import crm_login_required
 from .models import (
     Campaign,
@@ -455,7 +455,7 @@ def campaign_detail(request, campaign_id):
             "stats": reverse("crm_campaign_stats", args=[campaign.id]),
             "recipients": reverse("crm_campaign_recipients", args=[campaign.id]),
             "action": reverse("crm_campaign_action", args=[campaign.id, "ACTION"]),
-            "export": reverse("crm_campaign_export", args=[campaign.id]),
+            "export": reverse("crm_campaign_export", args=[campaign.id]) if can_download_data(request.user) else "",
         },
     }
     return render(request, "chatbot/crm/campaigns/detail.html", {
@@ -589,6 +589,8 @@ def campaign_action(request, campaign_id, action):
 @crm_login_required
 @require_GET
 def campaign_export(request, campaign_id):
+    if not can_download_data(request.user):
+        return _err("Only admins can download data.", 403)
     campaign, _ = _get_campaign(request, campaign_id)
     response = HttpResponse(content_type="text/csv; charset=utf-8")
     safe = "".join(ch if ch.isalnum() else "_" for ch in campaign.name)[:40] or "campaign"

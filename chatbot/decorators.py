@@ -7,18 +7,25 @@
 from functools import wraps
 from django.shortcuts import redirect
 from django.contrib.auth.decorators import login_required
+from django.utils.cache import add_never_cache_headers
 
 
 def crm_login_required(view_func):
     """
     Redirects unauthenticated users to /crm/login/
     instead of the default Django login URL.
+
+    CRM pages are never cached: phones (and the CRM added to the home screen)
+    otherwise show an old copy of the chat list on Back, without the newest chats.
     """
     @wraps(view_func)
     def wrapper(request, *args, **kwargs):
         if not request.user.is_authenticated:
             return redirect("crm_login")
-        return view_func(request, *args, **kwargs)
+        response = view_func(request, *args, **kwargs)
+        if not response.has_header("Cache-Control"):
+            add_never_cache_headers(response)
+        return response
     return wrapper
 
 

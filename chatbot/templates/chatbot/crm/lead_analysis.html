@@ -10,6 +10,7 @@
       <h1 class="text-2xl font-bold text-gray-900">Lead Analysis</h1>
       <p class="text-gray-600 mt-1">Analyze leads by label and sales person performance</p>
     </div>
+    {% if is_admin %}
     <div class="flex gap-2">
       <a href="{% url 'crm_export_leads_analysis' %}?{% if label_filter %}label={{ label_filter }}&{% endif %}{% if sales_person_filter %}sales_person={{ sales_person_filter }}&{% endif %}{% if date_from %}date_from={{ date_from }}&{% endif %}{% if date_to %}date_to={{ date_to }}&{% endif %}{% if status_filter %}status={{ status_filter }}&{% endif %}{% if source_filter %}source={{ source_filter }}&{% endif %}" 
          class="bg-green-600 hover:bg-green-700 text-white font-medium px-4 py-2 rounded-md transition-colors flex items-center gap-2">
@@ -17,6 +18,7 @@
         Download All Leads
       </a>
     </div>
+    {% endif %}
   </div>
 
   <!-- Filters -->
@@ -233,6 +235,7 @@
             <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Phone</th>
             <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Label</th>
             <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Sales Person</th>
+            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Created</th>
             <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Last Activity</th>
             <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">24h Status</th>
             <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
@@ -270,6 +273,9 @@
                 {% endif %}
               </td>
               <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                {{ session.created_at|date:"M d, Y H:i" }}
+              </td>
+              <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                 {{ session.updated_at|date:"M d, Y H:i" }}
               </td>
               <td class="px-6 py-4 whitespace-nowrap">
@@ -299,7 +305,7 @@
             {% endwith %}
           {% empty %}
             <tr>
-              <td colspan="7" class="px-6 py-12 text-center text-gray-500">
+              <td colspan="8" class="px-6 py-12 text-center text-gray-500">
                 No leads found matching your filters.
               </td>
             </tr>

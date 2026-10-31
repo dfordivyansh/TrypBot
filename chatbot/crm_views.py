@@ -41,7 +41,7 @@ from django.core.files.base import ContentFile
 from django.core.files.storage import default_storage
 from django.core.paginator import Paginator
 from django.db.models import Q
-from django.http import FileResponse, Http404, HttpResponse, HttpResponseRedirect, JsonResponse
+from django.http import FileResponse, Http404, HttpResponse, HttpResponseForbidden, HttpResponseRedirect, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from django.utils.dateparse import parse_date, parse_datetime
@@ -190,6 +190,30 @@ def has_session_access(session, user, role=None):
     if role in ("admin", "manager"):
         return True
     return session.assigned_sales_person_id in team_user_ids(user)
+
+
+def assignable_user_ids(user):
+    """
+    Who a sales person may hand a chat to: themselves, their own team (team
+    leader) and the team they are a member of (its leader and the other members).
+    """
+    ids = team_user_ids(user)
+    for leader in SalesProfile.objects.filter(team_members=user, is_team_leader=True):
+        ids.append(leader.user_id)
+        ids.extend(leader.team_members.values_list("pk", flat=True))
+    return list(dict.fromkeys(ids))
+
+
+def assign_users_for(user, role, sales_users):
+    """People in the chat's "Assign To" list."""
+    if role != "sales":
+        return sales_users
+    return User.objects.filter(pk__in=assignable_user_ids(user), is_active=True)
+
+
+def can_download_data(user):
+    """Only admins download data (contacts, lead analysis and campaign exports)."""
+    return get_user_role(user) == "admin"
 
 
 # =========================================================
@@ -588,6 +612,7 @@ def crm_chat_home(request):
         "reminders":          reminders,
         "labels":             labels,
         "sales_users":        sales_users,
+        "assign_users":       assign_users_for(request.user, role, sales_users),
         "sessions":           page_obj,
         "stats":              stats,
         "active_filter":      active_filter,
@@ -720,6 +745,7 @@ def crm_chat_detail(request, session_id):
         "labels":             labels,
         "templates":          templates,
         "sales_users":        sales_users,
+        "assign_users":       assign_users_for(request.user, role, sales_users),
         "sessions":           page_obj,
         "stats":              stats,
         "active_filter":      active_filter,
@@ -1551,7 +1577,7 @@ def crm_assign_chat(request):
     if not has_session_access(session, request.user, role):
         return JsonResponse({"success": False, "error": "Access denied."}, status=403)
 
-    if role == "sales" and user_id and int(user_id) not in team_user_ids(request.user):
+    if role == "sales" and user_id and int(user_id) not in assignable_user_ids(request.user):
         return JsonResponse(
             {"success": False, "error": "You can assign chats only to yourself or your team members."},
             status=403,
@@ -2217,6 +2243,8 @@ def _contact_export_row(contact):
 
 @crm_login_required
 def crm_export_contacts(request):
+    if not can_download_data(request.user):
+        return HttpResponseForbidden("Only admins can download data.")
     role          = get_user_role(request.user)
     search_q      = request.GET.get("q", "").strip()
     start_date    = request.GET.get("start_date", "").strip()
@@ -2850,9 +2878,9 @@ def crm_daywise_stats(request):
         qs = qs.filter(lead__source=source)
 
     if start:
-        qs = qs.filter(updated_at__date__gte=start)
+        qs = qs.filter(created_at__date__gte=start)
     if end:
-        qs = qs.filter(updated_at__date__lte=end)
+        qs = qs.filter(created_at__date__lte=end)
 
     # ── All labels that exist in the system ────────────────────
     all_labels = list(
@@ -2866,7 +2894,7 @@ def crm_daywise_stats(request):
             str(r["day"]): r["count"]
             for r in (
                 filtered_qs
-                .annotate(day=TruncDate("updated_at"))
+                .annotate(day=TruncDate("created_at"))
                 .values("day")
                 .annotate(count=Count("id"))
                 .order_by("day")
@@ -3006,13 +3034,13 @@ def crm_lead_analysis(request):
         elif sales_person_filter:
             queryset = queryset.filter(assigned_sales_person_id=sales_person_filter)
         
-        # Apply date filters - use updated_at to match Chats tab behavior
+        # Date filters use the lead's created time, not its last activity
         if date_from:
             try:
                 from datetime import datetime
                 date_from_obj = datetime.strptime(date_from, "%Y-%m-%d").date()
-                # Filter by updated_at date (matches Chats tab)
-                queryset = queryset.filter(updated_at__date__gte=date_from_obj)
+                # Leads created on or after this date
+                queryset = queryset.filter(created_at__date__gte=date_from_obj)
             except ValueError:
                 pass
         
@@ -3020,8 +3048,8 @@ def crm_lead_analysis(request):
             try:
                 from datetime import datetime
                 date_to_obj = datetime.strptime(date_to, "%Y-%m-%d").date()
-                # Filter by updated_at date (matches Chats tab)
-                queryset = queryset.filter(updated_at__date__lte=date_to_obj)
+                # Leads created on or before this date
+                queryset = queryset.filter(created_at__date__lte=date_to_obj)
             except ValueError:
                 pass
         
@@ -3057,8 +3085,8 @@ def crm_lead_analysis(request):
         elif status_filter == "inactive":
             leads_with_status = [l for l in leads_with_status if not l['is_active']]
         
-        # Sort by updated_at
-        leads_with_status.sort(key=lambda x: x['session'].updated_at, reverse=True)
+        # Newest leads first
+        leads_with_status.sort(key=lambda x: x['session'].created_at, reverse=True)
         
         # Counts are taken from exactly the leads listed below (after every
         # filter, the status one too), so each box adds up to Total Leads:
@@ -3138,6 +3166,8 @@ def crm_export_leads_analysis(request):
     Supports day-wise export and all leads export.
     Columns: Name, Phone Number, Label, Sales Person
     """
+    if not can_download_data(request.user):
+        return HttpResponseForbidden("Only admins can download data.")
     try:
         from django.utils import timezone
         from datetime import timedelta
@@ -3192,8 +3222,8 @@ def crm_export_leads_analysis(request):
             try:
                 from datetime import datetime
                 date_from_obj = datetime.strptime(date_from, "%Y-%m-%d").date()
-                # Filter by updated_at date (matches analysis page)
-                queryset = queryset.filter(updated_at__date__gte=date_from_obj)
+                # Lead created time (matches analysis page)
+                queryset = queryset.filter(created_at__date__gte=date_from_obj)
             except ValueError:
                 pass
         
@@ -3201,8 +3231,8 @@ def crm_export_leads_analysis(request):
             try:
                 from datetime import datetime
                 date_to_obj = datetime.strptime(date_to, "%Y-%m-%d").date()
-                # Filter by updated_at date (matches analysis page)
-                queryset = queryset.filter(updated_at__date__lte=date_to_obj)
+                # Lead created time (matches analysis page)
+                queryset = queryset.filter(created_at__date__lte=date_to_obj)
             except ValueError:
                 pass
         

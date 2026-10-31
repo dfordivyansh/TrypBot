@@ -138,7 +138,7 @@
     if (['completed', 'paused', 'failed'].includes(st.status) && s.failed > 0) b('retry', 'fa-rotate-right', 'Retry failed (' + fmtNum(s.failed) + ')');
     if (!['completed', 'cancelled'].includes(st.status) && st.status !== 'draft') b('cancel', 'fa-ban', 'Cancel', 'btn-outline !text-red-600 !border-red-200');
     b('duplicate', 'fa-copy', 'Duplicate');
-    acts.push('<a class="btn btn-outline" href="' + P.urls.export + '"><i class="fa-solid fa-download"></i> Export</a>');
+    if (P.urls.export) acts.push('<a class="btn btn-outline" href="' + P.urls.export + '"><i class="fa-solid fa-download"></i> Export</a>');
     if (!['running', 'scheduled'].includes(st.status)) b('delete', 'fa-trash', '', 'btn-outline !text-red-600 !border-red-200');
     $('#actions').innerHTML = acts.join('');
     $$('#actions [data-act]').forEach(el => el.onclick = () => runAction(el.dataset.act));

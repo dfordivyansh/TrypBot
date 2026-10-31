@@ -631,7 +631,7 @@ html, body {
       <div class="ph-selects order-last w-full flex gap-2 md:order-none md:w-auto">
         <select id="phAssign" class="ph-select" onchange="assignChat(this.value); phToast('Chat assigned')">
           <option value="">Assign To</option>
-          {% for u in sales_users %}
+          {% for u in assign_users %}
           <option value="{{ u.id }}" {% if active_session.assigned_sales_person_id == u.id %}selected{% endif %}>{{ u.get_full_name|default:u.username }}</option>
           {% endfor %}
         </select>
@@ -775,7 +775,7 @@ html, body {
               {{ active_session.assigned_sales_person.get_full_name|default:active_session.assigned_sales_person.username }}
             {% else %}Assign To{% endif %}
           </option>
-          {% for u in sales_users %}
+          {% for u in assign_users %}
           <option value="{{ u.id }}" class="text-gray-800 bg-white"
             {% if active_session.assigned_sales_person and active_session.assigned_sales_person.id == u.id %}selected{% endif %}>
             {{ u.get_full_name|default:u.username }}
@@ -853,7 +853,7 @@ html, body {
           <!-- Assign (mobile) -->
           <div class="sm:hidden">
             <div class="px-4 py-2 text-xs text-gray-400 font-semibold uppercase tracking-wide">Assign To</div>
-            {% for u in sales_users %}
+            {% for u in assign_users %}
             <button onclick="assignChat('{{ u.id }}'); toggleMoreMenu()"
               class="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50
                      {% if active_session.assigned_sales_person and active_session.assigned_sales_person.id == u.id %}bg-green-50 text-green-700{% endif %}">
@@ -3100,6 +3100,10 @@ function listCountdowns() {
 }
 listCountdowns();
 setInterval(listCountdowns, 60000);
+
+// Back from a chat: some browsers (iPhone Safari) show this page as it was,
+// without the newest chats; load it fresh instead.
+window.addEventListener('pageshow', e => { if (e.persisted) location.reload(); });
 
 (function () {
   const list = document.getElementById('convList');

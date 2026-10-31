@@ -442,7 +442,7 @@ def send_whatsapp_message(
     def _post(label: str, payload: dict) -> dict:
         print(f"\n========== {label} PAYLOAD ==========")
         print(payload)
-        resp = requests.post(url, headers=headers, json=payload)
+        resp = requests.post(url, headers=headers, json=payload, timeout=15)
         print(f"\n========== {label} RESPONSE ==========")
         print(resp.status_code, resp.text)
         return resp.json()
@@ -601,6 +601,41 @@ def _transfer_to_sales_agent(session):
 
     except Exception as e:
         print(e)
+
+
+def _auto_reply_and_transfer(session, user_number, message_text, user_message_id=""):
+    """
+    AI replies are off (settings.WHATSAPP_AI_REPLIES): send one fixed message,
+    then label the chat TODAY, assign it (category rule / round robin) and
+    switch the bot off, so the sales agent takes it from here.
+    """
+    from .utils import _save_bot_reply_to_crm
+
+    reply = settings.WHATSAPP_AUTO_REPLY_TEXT
+    try:
+        whatsapp_response = send_whatsapp_message(user_number, reply, [], user_message_id=user_message_id)
+    except Exception as e:
+        print(f"[AUTO REPLY] send failed for {user_number}: {e}")
+        whatsapp_response = {}
+    wamid = ""
+    if isinstance(whatsapp_response, dict):
+        wamid = (whatsapp_response.get("messages") or [{}])[0].get("id", "")
+    _save_bot_reply_to_crm(session, reply, whatsapp_message_id=wamid)
+
+    # TODAY label + assign + AI off + notify the agent
+    mark_lead_today(session)
+
+    session.refresh_from_db()
+    session.unread_count = (session.unread_count or 0) + 1
+    session.data["_processing"] = False
+    session.save(update_fields=["unread_count", "data"])
+
+    try:
+        from .crm_lead_signals import push_new_message_notification
+        push_new_message_notification(session, message_text[:100])
+    except Exception as e:
+        print(f"Failed to send notification: {e}")
+    print(f"[AUTO REPLY] {user_number}: fixed reply sent, chat {session.id} -> {session.assigned_sales_person}")
 
 
 # ======================================================
@@ -930,6 +965,23 @@ def whatsapp_webhook(request):
 
             if session.data.get("_processing") and _time.time() - float(session.data.get("_processing_at") or 0) < 120:
                 print("MESSAGE IGNORED — PROCESSING ACTIVE")
+                if not duplicate_exists:
+                    # Only the bot reply is skipped; the agent still sees the message.
+                    from django.db.models import F
+                    ChatMessage.objects.create(
+                        session=session,
+                        sender_type="user",
+                        message=message_text,
+                        whatsapp_message_id=message_id,
+                        raw_payload=message_data,
+                        media_url=media_url or "",
+                        media_type=media_type or "",
+                    )
+                    ChatSession.objects.filter(pk=session.pk).update(
+                        unread_count=F("unread_count") + 1,
+                        last_message=message_text[:500],
+                        updated_at=timezone.now(),
+                    )
                 return Response({"success": True})
 
             session.data["_processing"]       = True
@@ -1083,10 +1135,11 @@ def whatsapp_webhook(request):
         # --------------------------------------------------
 
         session.refresh_from_db(fields=["is_human_takeover"])
+        ai_replies_on = settings.WHATSAPP_AI_REPLIES
 
         # Allow flow submissions to be processed even during human takeover
         # to save form data and send summary, but keep bot silent for other messages
-        if session.is_human_takeover and not is_flow_submission:
+        if session.is_human_takeover and (not is_flow_submission or not ai_replies_on):
             print("HUMAN TAKEOVER ACTIVE — bot silent")
             session.unread_count       += 1
             session.updated_at          = timezone.now()
@@ -1099,6 +1152,13 @@ def whatsapp_webhook(request):
             except Exception as e:
                 print(f"Failed to send notification: {e}")
             return Response({"success": True, "human_takeover": True})
+
+        # --------------------------------------------------
+        # AI OFF — one fixed reply, then hand the chat to a sales agent
+        # --------------------------------------------------
+        if not ai_replies_on:
+            _auto_reply_and_transfer(session, user_number, message_text, user_message_id=message_id)
+            return Response({"success": True, "transferred": True})
 
         # --------------------------------------------------
         # TYPING INDICATOR — fire immediately on receipt
