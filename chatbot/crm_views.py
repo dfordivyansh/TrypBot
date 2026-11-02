@@ -245,21 +245,32 @@ def _generate_session_id(phone):
 
 
 BOOKING_MODULE = "booking"
+# Cab / 1-2 day tour leads (bookings and enquiries alike) are listed in Booking.
+BOOKING_CATEGORIES = ("cab", "tour_1day", "tour_2day")
 
 
-def _has_booking():
-    return Exists(Booking.objects.filter(session=OuterRef("pk")))
+def _booking_chats_q():
+    """Chats of CRM -> Booking: a website booking, or a cab / 1-2 day tour lead."""
+    return (Q(Exists(Booking.objects.filter(session=OuterRef("pk"))))
+            | Q(data__lead_category__in=BOOKING_CATEGORIES))
+
+
+def is_booking_chat(session):
+    from .crm_helpers import lead_category
+    return (lead_category(session) in BOOKING_CATEGORIES
+            or Booking.objects.filter(session=session).exists())
 
 
 def list_module(request, session=None):
     """
-    Which chat list is shown: "booking" (chats with a website booking, CRM ->
-    Booking) or "chats" (all the others). ?module=booking, or the open chat's.
+    Which chat list is shown: "booking" (CRM -> Booking: website bookings and
+    cab / 1-2 day tour leads) or "chats" (all the others). ?module=booking, or
+    the open chat's.
     """
     module = request.GET.get("module", "")
     if module in (BOOKING_MODULE, "chats"):
         return module
-    if session is not None and Booking.objects.filter(session=session).exists():
+    if session is not None and is_booking_chat(session):
         return BOOKING_MODULE
     return "chats"
 
@@ -282,7 +293,12 @@ def build_session_list(request, role=None, apply_date_filter=True, module="chats
 
     sessions = filter_sessions_for_user(sessions, request.user, role)
     # Booking chats have their own list (CRM -> Booking), not in Chats.
-    sessions = sessions.filter(_has_booking() if module == BOOKING_MODULE else ~_has_booking())
+    if module == BOOKING_MODULE:
+        sessions = sessions.filter(_booking_chats_q())
+    else:
+        # By id: chats without a lead_category must stay in Chats (a negated
+        # JSON-key test would drop them as NULL).
+        sessions = sessions.exclude(pk__in=ChatSession.objects.filter(_booking_chats_q()).values("pk"))
 
     if search_q:
         sessions = sessions.filter(
