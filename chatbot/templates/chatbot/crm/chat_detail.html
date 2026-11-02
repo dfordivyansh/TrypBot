@@ -81,6 +81,8 @@ html, body {
 /* "Select Filters" sheet */
 .fs-backdrop { position: fixed; inset: 0; z-index: 75; background: rgba(0,0,0,.45); display: none; align-items: center; justify-content: center; padding: 16px; }
 .fs-backdrop.open { display: flex; }
+.rename-field { color: #111827 !important; background: #fff !important; caret-color: #111827; }
+.rename-field::placeholder { color: #9ca3af; opacity: 1; }
 .att-backdrop { position: fixed; inset: 0; z-index: 74; background: rgba(0,0,0,.45); display: none; align-items: flex-end; justify-content: center; }
 .att-backdrop.open { display: flex; }
 .att-sheet { background: #fff; width: 100%; max-width: 560px; border-radius: 18px 18px 0 0; padding: 22px 10px 10px; }
@@ -1589,6 +1591,20 @@ html, body {
     <div class="fs-actions">
       <button type="button" id="nsSave" onclick="saveNote()">Save</button>
       <button type="button" onclick="closeNoteSheet()">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- Rename contact (own box, not prompt(): its text could come out white on white) -->
+<div id="renameSheet" class="fs-backdrop" onclick="if (event.target === this) closeRenameSheet()">
+  <div class="fs-card">
+    <div class="fs-title">Contact Name</div>
+    <input type="text" id="renameInput" maxlength="255" placeholder="Enter customer name" autocomplete="off"
+      class="fs-field rename-field"
+      onkeydown="if (event.key === 'Enter') saveRename(); else if (event.key === 'Escape') closeRenameSheet();">
+    <div class="fs-actions" style="margin-top:22px">
+      <button type="button" id="renameSave" onclick="saveRename()">Save</button>
+      <button type="button" onclick="closeRenameSheet()">Cancel</button>
     </div>
   </div>
 </div>
@@ -3270,16 +3286,29 @@ function phToggleBot() {
 }
 
 function renameChat() {
-  const current = document.getElementById('phName').textContent.trim();
-  const name = prompt('Contact name', current);
-  if (name === null || !name.trim() || name.trim() === current) return;
-  phPost('{% url "crm_rename_chat" active_session.id %}', { name: name.trim() }).then(d => {
+  const input = document.getElementById('renameInput');
+  input.value = document.getElementById('phName').textContent.trim();
+  document.getElementById('renameSheet').classList.add('open');
+  setTimeout(() => { input.focus(); input.select(); }, 50);
+}
+
+function closeRenameSheet() { document.getElementById('renameSheet').classList.remove('open'); }
+
+function saveRename() {
+  const name = document.getElementById('renameInput').value.trim();
+  if (!name) return phToast('Name cannot be empty');
+  if (name === document.getElementById('phName').textContent.trim()) return closeRenameSheet();
+  const btn = document.getElementById('renameSave');
+  btn.disabled = true;
+  phPost('{% url "crm_rename_chat" active_session.id %}', { name }).then(d => {
     if (!d.success) return phToast(d.error || 'Could not rename');
     document.getElementById('phName').textContent = d.name;
     const side = document.getElementById(`sidebar-name-${PH_SESSION}`);
     if (side) side.textContent = d.name;
+    closeRenameSheet();
     phToast('Name updated');
-  }).catch(() => phToast('Could not rename'));
+  }).catch(() => phToast('Could not rename'))
+    .finally(() => { btn.disabled = false; });
 }
 
 // ── Create Note (+ reminder) ─────────────────────────────────────

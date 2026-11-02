@@ -603,6 +603,13 @@ def _transfer_to_sales_agent(session):
         print(e)
 
 
+def _set_customer_name(session, name):
+    """Take a name from WhatsApp / a lead form, unless an agent renamed the chat in the CRM."""
+    data = session.data if isinstance(session.data, dict) else {}
+    if name and not data.get("name_set_by_agent"):
+        session.user_name = name
+
+
 def _auto_reply_and_transfer(session, user_number, message_text, user_message_id=""):
     """
     AI replies are off (settings.WHATSAPP_AI_REPLIES): send one fixed message,
@@ -1000,8 +1007,7 @@ def whatsapp_webhook(request):
             session.data["_followup_stopped"] = True
             session.phone_number              = user_number
 
-            if contact_name:
-                session.user_name = contact_name
+            _set_customer_name(session, contact_name)
 
             session.save()
 
@@ -1883,7 +1889,7 @@ def widget_lead_create(request):
             )
 
             if not created:
-                session.user_name = name
+                _set_customer_name(session, name)
                 session.save()
         else:
             # Create session without phone for anonymous leads
@@ -1982,7 +1988,7 @@ def widget_lead_update(request, lead_id):
 
         # Update session if exists
         if lead.session:
-            lead.session.user_name = name
+            _set_customer_name(lead.session, name)
             if phone_cleaned:
                 lead.session.phone_number = phone_cleaned
             lead.session.save()
@@ -2028,8 +2034,8 @@ def _save_ad_lead(source, meta_key, meta, full_name, phone, email, notes, fallba
                     "is_active": True,
                 },
             )
-            if not created and full_name:
-                session.user_name = full_name
+            if not created:
+                _set_customer_name(session, full_name)
         else:
             session = ChatSession.objects.create(
                 user_name=full_name or fallback_name,

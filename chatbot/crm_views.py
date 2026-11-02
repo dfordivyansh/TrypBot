@@ -1904,7 +1904,11 @@ def crm_rename_chat(request, session_id):
     if not name:
         return JsonResponse({"success": False, "error": "Name cannot be empty."}, status=400)
     session.user_name = name
-    session.save(update_fields=["user_name"])
+    # From now on the WhatsApp profile name / lead forms don't overwrite it.
+    data = session.data if isinstance(session.data, dict) else {}
+    data["name_set_by_agent"] = True
+    session.data = data
+    session.save(update_fields=["user_name", "data"])
     Lead.objects.filter(session=session).update(full_name=name)
     return JsonResponse({"success": True, "name": name})
 
