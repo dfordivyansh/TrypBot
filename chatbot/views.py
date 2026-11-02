@@ -628,7 +628,9 @@ def _auto_reply_and_transfer(session, user_number, message_text, user_message_id
     session.refresh_from_db()
     session.unread_count = (session.unread_count or 0) + 1
     session.data["_processing"] = False
-    session.save(update_fields=["unread_count", "data"])
+    # The list shows what the customer wrote, not the same fixed reply on every chat.
+    session.last_message = message_text[:500]
+    session.save(update_fields=["unread_count", "data", "last_message"])
 
     try:
         from .crm_lead_signals import push_new_message_notification
@@ -1071,6 +1073,10 @@ def whatsapp_webhook(request):
             )
             if (timezone.now() - sent_at) > timedelta(minutes=2):
                 ChatMessage.objects.filter(pk=user_msg.pk).update(created_at=sent_at)
+            # The chat list shows the latest message: the customer's, not the
+            # agent's earlier one (the agent-takeover path never set it).
+            session.last_message = message_text[:500]
+            session.save(update_fields=["last_message"])
         else:
             print(f"[DUPLICATE] Skipping CRM save for message ID {message_id} (already exists)")
 
