@@ -278,10 +278,13 @@ _ONE_DAY_STRONG = re.compile(r"\b(same[\s-]*day|day[\s-]*trip|one[\s-]*day\s*(?:
 # ... and only next to a travel word ("call me in 1 day" is not a tour).
 _TWO_DAY_PLAIN = re.compile(r"\b(?:2|two)[\s-]*days?\b|\b(?:do|2)\s*din\b|दो\s*दिन", re.IGNORECASE)
 _ONE_DAY_PLAIN = re.compile(r"\b(?:1|one)[\s-]*day\b|\b(?:ek|1)\s*din\b|एक\s*दिन", re.IGNORECASE)
+# No "pickup" / "drop": tour package customers ask "pick up kaha se?" too.
 _CAB = re.compile(
     r"\b(cabs?|taxis?|cars?|gaa?di|innova|crysta|ertiga|dzire|sedan|suv|tempo\s*traveller|traveller|"
-    r"pick\s*-?\s*up|drop|airport\s*transfer|one[\s-]*way|round[\s-]*trip)\b|कैब|टैक्सी|गाड़ी|गाडी",
+    r"\d+\s*-?\s*seater|airport\s*transfer)\b|कैब|टैक्सी|गाड़ी|गाडी",
     re.IGNORECASE)
+# A message about a tour package is not a cab enquiry, even if it mentions a car.
+_PACKAGE = re.compile(r"package|tour|yatra|darshan|jyotirling|itinerary|sightseeing|यात्रा|टूर|दर्शन", re.IGNORECASE)
 
 
 def detect_lead_category(text):
@@ -292,7 +295,7 @@ def detect_lead_category(text):
         return "tour_2day"
     if _ONE_DAY_STRONG.search(text) or (travel and _ONE_DAY_PLAIN.search(text)):
         return "tour_1day"
-    if _CAB.search(text):
+    if _CAB.search(text) and not _PACKAGE.search(text):
         return "cab"
     return None
 
