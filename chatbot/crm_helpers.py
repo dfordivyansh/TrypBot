@@ -1,3 +1,4 @@
+import re
 from django.db import transaction
 from django.db.models import F as models_F
 
@@ -263,12 +264,45 @@ def assign_by_category(session):
         return None
 
 
-def assign_paid_booking(session):
+# ---------------------------------------------------------
+# Cab / 1-2 day tour words in a customer's WhatsApp message (the bot does not
+# chat, so nothing else tells us what the lead is about).
+# ---------------------------------------------------------
+
+_TRAVEL_WORDS = re.compile(r"tour|trip|package|sightseeing|darshan|yatra|ghum|visit|travel|itinerary|plan|घूम|यात्रा|टूर", re.IGNORECASE)
+# Clear on their own ...
+_TWO_DAY_STRONG = re.compile(
+    r"\b(2\s*d\s*/?\s*1\s*n|1\s*n\s*/?\s*2\s*d|1\s*night\s*(?:and\s*|&\s*)?2\s*days?|2\s*days?\s*(?:and\s*|&\s*)?1\s*night)\b",
+    re.IGNORECASE)
+_ONE_DAY_STRONG = re.compile(r"\b(same[\s-]*day|day[\s-]*trip|one[\s-]*day\s*(?:tour|trip)|1[\s-]*day\s*(?:tour|trip))\b", re.IGNORECASE)
+# ... and only next to a travel word ("call me in 1 day" is not a tour).
+_TWO_DAY_PLAIN = re.compile(r"\b(?:2|two)[\s-]*days?\b|\b(?:do|2)\s*din\b|दो\s*दिन", re.IGNORECASE)
+_ONE_DAY_PLAIN = re.compile(r"\b(?:1|one)[\s-]*day\b|\b(?:ek|1)\s*din\b|एक\s*दिन", re.IGNORECASE)
+_CAB = re.compile(
+    r"\b(cabs?|taxis?|cars?|gaa?di|innova|crysta|ertiga|dzire|sedan|suv|tempo\s*traveller|traveller|"
+    r"pick\s*-?\s*up|drop|airport\s*transfer|one[\s-]*way|round[\s-]*trip)\b|कैब|टैक्सी|गाड़ी|गाडी",
+    re.IGNORECASE)
+
+
+def detect_lead_category(text):
+    """cab / tour_1day / tour_2day from a customer's message, or None. A tour wins over cab words."""
+    text = text or ""
+    travel = _TRAVEL_WORDS.search(text)
+    if _TWO_DAY_STRONG.search(text) or (travel and _TWO_DAY_PLAIN.search(text)):
+        return "tour_2day"
+    if _ONE_DAY_STRONG.search(text) or (travel and _ONE_DAY_PLAIN.search(text)):
+        return "tour_1day"
+    if _CAB.search(text):
+        return "cab"
+    return None
+
+
+def assign_to_category_people(session):
     """
-    A paid website booking goes to its category's people (Admin -> Lead
-    category rules), even when the chat is already with someone else.
-    Nothing changes if no active rule applies or the chat is already with one
-    of them. Returns the new assignee, or None.
+    Give the chat to its category's people (Admin -> Lead category rules),
+    even when it is already with someone else: a paid website booking, or a
+    chat an agent moved to Booking. Nothing changes if no active rule applies
+    or the chat is already with one of them. Returns the new assignee, or None.
     """
     from .models import LeadCategoryRule
     from .crm_lead_signals import push_chat_assigned_notification
@@ -282,11 +316,11 @@ def assign_paid_booking(session):
     user = assign_by_category(session)
     if user:
         ConversationStatus.objects.filter(session=session).update(assigned_to=user)
-        print(f"[PAID BOOKING] session {session.id} moved to {user.username}")
+        print(f"[CATEGORY PEOPLE] session {session.id} moved to {user.username}")
         try:
             push_chat_assigned_notification(session, user)
         except Exception as e:
-            print(f"[PAID BOOKING] notification error: {e}")
+            print(f"[CATEGORY PEOPLE] notification error: {e}")
     return user
 
 

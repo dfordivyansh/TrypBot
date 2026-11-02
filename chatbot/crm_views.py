@@ -250,13 +250,20 @@ BOOKING_CATEGORIES = ("cab", "tour_1day", "tour_2day")
 
 
 def _booking_chats_q():
-    """Chats of CRM -> Booking: a website booking, or a cab / 1-2 day tour lead."""
-    return (Q(Exists(Booking.objects.filter(session=OuterRef("pk"))))
+    """
+    Chats of CRM -> Booking: moved there by an agent (data["module"]), or not
+    moved anywhere and with a website booking or a cab / 1-2 day tour category.
+    """
+    auto = (Q(Exists(Booking.objects.filter(session=OuterRef("pk"))))
             | Q(data__lead_category__in=BOOKING_CATEGORIES))
+    return Q(data__module=BOOKING_MODULE) | (Q(data__module__isnull=True) & auto)
 
 
 def is_booking_chat(session):
     from .crm_helpers import lead_category
+    module = (session.data or {}).get("module") if isinstance(session.data, dict) else None
+    if module in (BOOKING_MODULE, "chats"):
+        return module == BOOKING_MODULE
     return (lead_category(session) in BOOKING_CATEGORIES
             or Booking.objects.filter(session=session).exists())
 
@@ -1927,6 +1934,59 @@ def crm_rename_chat(request, session_id):
     session.save(update_fields=["user_name", "data"])
     Lead.objects.filter(session=session).update(full_name=name)
     return JsonResponse({"success": True, "name": name})
+
+
+# =========================================================
+# MOVE CHAT — Booking <-> Chats (chat menu)
+# =========================================================
+
+@crm_login_required
+@require_POST
+def crm_move_chat(request, session_id):
+    """
+    Move to Booking (with Cab / 1 Day Tour / 2 Day Tour: the chat also goes to
+    that category's people) or Move to Chats. The choice beats the automatic one.
+    """
+    from django.urls import reverse
+    from .crm_helpers import assign_to_category_people
+
+    role    = get_user_role(request.user)
+    session = get_object_or_404(ChatSession, id=session_id)
+    if not has_session_access(session, request.user, role):
+        return JsonResponse({"success": False, "error": "Access denied."}, status=403)
+    try:
+        body = json.loads(request.body or b"{}")
+    except (ValueError, TypeError):
+        body = {}
+    to, category = body.get("to"), body.get("category", "")
+
+    data = session.data if isinstance(session.data, dict) else {}
+    if to == BOOKING_MODULE:
+        if category not in BOOKING_CATEGORIES:
+            return JsonResponse({"success": False, "error": "Pick Cab, 1 Day Tour or 2 Day Tour."}, status=400)
+        data["lead_category"] = category
+        data["lead_category_by"] = request.user.username
+    elif to != "chats":
+        return JsonResponse({"success": False, "error": "Unknown list."}, status=400)
+    data["module"] = to
+    session.data = data
+    session.save(update_fields=["data"])
+
+    assignee = assign_to_category_people(session) if to == BOOKING_MODULE else None
+    where = "Booking" if to == BOOKING_MODULE else "Chats"
+    InternalNote.objects.create(
+        session=session, added_by=request.user,
+        note=f"Moved to {where}" + (f" ({dict(Booking._meta.get_field('category').choices)[category]})" if category and to == BOOKING_MODULE else "")
+             + (f", assigned to {assignee.get_full_name() or assignee.username}" if assignee else ""),
+    )
+
+    # Open the chat in its new list, or back to the list if it is no longer theirs.
+    if has_session_access(session, request.user, role):
+        redirect_url = reverse("crm_chat_detail", args=[session.id]) + f"?module={to}"
+    else:
+        redirect_url = reverse("crm_chat_home") + ("?module=booking" if body.get("from") == BOOKING_MODULE else "")
+    message = f"Moved to {where}" + (f" and assigned to {assignee.get_full_name() or assignee.username}" if assignee else "")
+    return JsonResponse({"success": True, "message": message, "redirect": redirect_url})
 
 
 # =========================================================

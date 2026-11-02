@@ -603,6 +603,32 @@ def _transfer_to_sales_agent(session):
         print(e)
 
 
+CATEGORY_CHECK_MESSAGES = 5   # customer messages read for cab / tour words
+
+
+def _categorise_from_message(session, message_text):
+    """
+    Cab / 1-2 day tour words in one of a chat's first customer messages set
+    its lead category: the chat goes to CRM -> Booking and, if it has no
+    agent yet, to that category's people (Admin -> Lead category rules).
+    A category already set (website form, agent, earlier message) is kept.
+    """
+    from .crm_helpers import detect_lead_category
+
+    data = session.data if isinstance(session.data, dict) else {}
+    checks = int(data.get("_category_checks") or 0)
+    if data.get("lead_category") or checks >= CATEGORY_CHECK_MESSAGES:
+        return
+    data["_category_checks"] = checks + 1
+    category = detect_lead_category(message_text)
+    if category:
+        data["lead_category"] = category
+        data["lead_category_by"] = "keywords"
+        print(f"[CATEGORY] chat {session.id}: {category} from message {message_text[:60]!r}")
+    session.data = data
+    session.save(update_fields=["data"])
+
+
 def _set_customer_name(session, name):
     """Take a name from WhatsApp / a lead form, unless an agent renamed the chat in the CRM."""
     data = session.data if isinstance(session.data, dict) else {}
@@ -1083,6 +1109,8 @@ def whatsapp_webhook(request):
             # agent's earlier one (the agent-takeover path never set it).
             session.last_message = message_text[:500]
             session.save(update_fields=["last_message"])
+            if message_type == "text" and not is_flow_submission:
+                _categorise_from_message(session, message_text)
         else:
             print(f"[DUPLICATE] Skipping CRM save for message ID {message_id} (already exists)")
 
@@ -2284,9 +2312,9 @@ def website_booking_webhook(request):
             if status == "paid":
                 # Paid: to the category's people (Aarti for cab / 1-2 day
                 # tours) even if the chat was with someone else.
-                from .crm_helpers import assign_paid_booking
+                from .crm_helpers import assign_to_category_people
                 session.refresh_from_db()
-                assign_paid_booking(session)
+                assign_to_category_people(session)
             if not was_takeover:
                 ChatSession.objects.filter(pk=session.pk).update(is_human_takeover=False)
         except Exception as exc:

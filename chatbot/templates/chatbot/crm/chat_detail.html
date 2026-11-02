@@ -83,6 +83,9 @@ html, body {
 .fs-backdrop.open { display: flex; }
 .rename-field { color: #111827 !important; background: #fff !important; caret-color: #111827; }
 .rename-field::placeholder { color: #9ca3af; opacity: 1; }
+.move-opt { display: flex; align-items: center; gap: 12px; width: 100%; padding: 14px 16px; border: 1px solid #d1d5db; border-radius: 10px; font-size: 16px; font-weight: 600; color: #111827; background: #fff; text-align: left; }
+.move-opt:hover { background: #eff6ff; border-color: #2563eb; }
+.move-opt i { width: 20px; color: #2563eb; }
 .att-backdrop { position: fixed; inset: 0; z-index: 74; background: rgba(0,0,0,.45); display: none; align-items: flex-end; justify-content: center; }
 .att-backdrop.open { display: flex; }
 .att-sheet { background: #fff; width: 100%; max-width: 560px; border-radius: 18px 18px 0 0; padding: 22px 10px 10px; }
@@ -692,6 +695,11 @@ html, body {
             <div id="phMenu" class="hidden absolute right-0 top-8 bg-white text-gray-800 rounded-lg shadow-2xl min-w-[190px] z-50 overflow-hidden">
               <button type="button" id="phCloseBtn" onclick="phToggleClose()">{% if conv_status.closed %}Reopen Chat{% else %}Close Chat{% endif %}</button>
               <button type="button" id="phBlockBtn" onclick="phToggleBlock()">{% if active_session.data.blocked %}Unblock Chat{% else %}Block Chat{% endif %}</button>
+              {% if module == "booking" %}
+              <button type="button" onclick="moveChat('chats')"><i class="fa-solid fa-comments mr-1"></i> Move to Chats</button>
+              {% else %}
+              <button type="button" onclick="openMoveSheet()"><i class="fa-solid fa-ticket mr-1"></i> Move to Booking</button>
+              {% endif %}
               <button type="button" onclick="openPanel('notes')">Notes</button>
               <button type="button" onclick="openPanel('reminders')">Reminders</button>
               <button type="button" onclick="openPanel('engagement')">Engagement Metrics</button>
@@ -858,6 +866,20 @@ html, body {
             {% else %}
               <i class="fa-solid fa-circle-xmark w-4"></i>
               <div><div class="font-semibold">Close Ticket</div><div class="text-xs text-gray-400">Mark as resolved</div></div>
+            {% endif %}
+          </button>
+
+          <div class="border-t border-gray-100"></div>
+
+          <!-- Booking <-> Chats -->
+          <button onclick="toggleMoreMenu(); {% if module == 'booking' %}moveChat('chats'){% else %}openMoveSheet(){% endif %}"
+            class="w-full flex items-center gap-3 px-4 py-3 text-sm hover:bg-gray-50 transition text-left text-gray-700">
+            {% if module == "booking" %}
+            <i class="fa-solid fa-comments w-4 text-green-600"></i>
+            <div><div class="font-semibold">Move to Chats</div><div class="text-xs text-gray-400">Not a cab / 1-2 day tour lead</div></div>
+            {% else %}
+            <i class="fa-solid fa-ticket w-4 text-blue-600"></i>
+            <div><div class="font-semibold">Move to Booking</div><div class="text-xs text-gray-400">Cab / 1-2 day tour lead</div></div>
             {% endif %}
           </button>
 
@@ -1591,6 +1613,22 @@ html, body {
     <div class="fs-actions">
       <button type="button" id="nsSave" onclick="saveNote()">Save</button>
       <button type="button" onclick="closeNoteSheet()">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- Move to Booking: what the lead is about -->
+<div id="moveSheet" class="fs-backdrop" onclick="if (event.target === this) closeMoveSheet()">
+  <div class="fs-card">
+    <div class="fs-title">Move to Booking</div>
+    <p class="text-sm text-gray-600 mb-4">What is this lead about? The chat moves to Booking and to that category's sales person.</p>
+    <div class="flex flex-col gap-2">
+      <button type="button" class="move-opt" onclick="moveChat('booking', 'cab')"><i class="fa-solid fa-car"></i> Cab</button>
+      <button type="button" class="move-opt" onclick="moveChat('booking', 'tour_1day')"><i class="fa-solid fa-sun"></i> 1 Day Tour</button>
+      <button type="button" class="move-opt" onclick="moveChat('booking', 'tour_2day')"><i class="fa-solid fa-moon"></i> 2 Day Tour</button>
+    </div>
+    <div class="fs-actions" style="margin-top:18px">
+      <button type="button" onclick="closeMoveSheet()">Cancel</button>
     </div>
   </div>
 </div>
@@ -3293,6 +3331,22 @@ function renameChat() {
 }
 
 function closeRenameSheet() { document.getElementById('renameSheet').classList.remove('open'); }
+
+// ── Move chat: Booking <-> Chats ─────────────────────────────────
+function openMoveSheet() { document.getElementById('moveSheet').classList.add('open'); }
+function closeMoveSheet() { document.getElementById('moveSheet').classList.remove('open'); }
+
+function moveChat(to, category) {
+  if (to === 'chats' && !confirm('Move this chat back to Chats? It is not a cab / 1-2 day tour lead.')) return;
+  document.querySelectorAll('.move-opt').forEach(b => b.disabled = true);
+  phPost('{% url "crm_move_chat" active_session.id %}', { to, category: category || '', from: LIST_MODULE }).then(d => {
+    if (!d.success) return phToast(d.error || 'Could not move the chat');
+    closeMoveSheet();
+    phToast(d.message);
+    setTimeout(() => { location.href = d.redirect; }, 800);
+  }).catch(() => phToast('Could not move the chat'))
+    .finally(() => document.querySelectorAll('.move-opt').forEach(b => b.disabled = false));
+}
 
 function saveRename() {
   const name = document.getElementById('renameInput').value.trim();

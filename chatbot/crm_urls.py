@@ -182,6 +182,11 @@ urlpatterns = [
         name="crm_rename_chat"
     ),
     path(
+        "chat/<int:session_id>/move/",
+        crm_views.crm_move_chat,
+        name="crm_move_chat"
+    ),
+    path(
         "chat/<int:session_id>/block/",
         crm_views.crm_block_chat,
         name="crm_block_chat"
