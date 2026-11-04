@@ -1,0 +1,135 @@
+{% extends "chatbot/crm/base.html" %}
+{% load static %}
+
+{% block title %}Call Log — TrypBot CRM{% endblock %}
+
+{% block mobile_bar %}{% endblock %}
+
+{% block extra_head %}
+<style>
+.calls-page { display: flex; flex-direction: column; height: 100%; background: #f9fafb; }
+.calls-head { background: #00a86b; color: #fff; flex-shrink: 0; padding-top: env(safe-area-inset-top, 0px); }
+.calls-body { flex: 1 1 0; min-height: 0; overflow-y: auto; padding: 10px; }
+.box { background: #fff; border: 1px solid #e5e7eb; border-radius: 12px; padding: 12px 14px; margin-bottom: 10px; }
+.box h2 { font-weight: 700; font-size: 15px; color: #111827; margin-bottom: 6px; }
+.counts { width: 100%; border-collapse: collapse; font-size: 14px; }
+.counts td { padding: 7px 4px; border-top: 1px solid #f3f4f6; }
+.counts td:last-child { text-align: right; font-weight: 700; }
+.filters { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+@media (min-width: 900px) { .filters { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+.filters label { font-size: 12px; color: #6b7280; display: block; }
+.filters input, .filters select { width: 100%; border: 1px solid #d1d5db; border-radius: 8px; padding: 7px 9px; font-size: 14px; min-width: 0; background: #fff; }
+.log { width: 100%; border-collapse: collapse; font-size: 14px; }
+.log th { text-align: left; font-size: 12px; color: #6b7280; font-weight: 600; padding: 6px 4px; }
+.log td { padding: 8px 4px; border-top: 1px solid #f3f4f6; vertical-align: top; }
+.log a { color: #1d4ed8; word-break: break-word; }
+.sub { font-size: 12px; color: #6b7280; }
+@media (max-width: 640px) { .log .hide-sm { display: none; } }
+.cust { width: 100%; min-width: 112px; max-width: 150px; border: 1px solid #d1d5db; border-radius: 8px; padding: 6px 7px; font-size: 14px; }
+.saved { color: #059669; min-height: 14px; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="calls-page">
+  <div class="calls-head">
+    <div class="flex items-center gap-4 px-4 py-4">
+      <a href="{% url 'crm_chat_home' %}" aria-label="Back"><i class="fa-solid fa-arrow-left text-xl"></i></a>
+      <span class="text-xl font-bold flex-1">Call Log</span>
+      {% if is_admin %}
+      <a href="{% url 'admin:chatbot_callagent_changelist' %}" class="text-sm font-semibold bg-white/20 rounded-full px-3 py-1.5"><i class="fa-solid fa-gear mr-1"></i>Agents</a>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="calls-body">
+    <div class="grid gap-[10px] md:grid-cols-2">
+      <div class="box">
+        <h2>Today · {{ today_total }} call{{ today_total|pluralize }}</h2>
+        <table class="counts">
+          {% for a in today_per_agent %}<tr><td>{{ a.name }}</td><td>{{ a.n }}</td></tr>
+          {% empty %}<tr><td class="sub">No calls today yet.</td><td></td></tr>{% endfor %}
+        </table>
+      </div>
+      <div class="box">
+        <h2>{% if filtered %}Selected dates{% else %}All time{% endif %} · {{ total }} call{{ total|pluralize }}</h2>
+        <table class="counts">
+          {% for a in per_agent %}<tr><td>{{ a.name }}</td><td>{{ a.n }}</td></tr>
+          {% empty %}<tr><td class="sub">No calls.</td><td></td></tr>{% endfor %}
+        </table>
+      </div>
+    </div>
+
+    <form method="get" class="box filters">
+      <div><label for="f-start">From</label><input id="f-start" type="date" name="start" value="{{ f.start }}"></div>
+      <div><label for="f-end">To</label><input id="f-end" type="date" name="end" value="{{ f.end }}"></div>
+      {% if is_admin %}
+      <div><label for="f-agent">Agent</label>
+        <select id="f-agent" name="agent">
+          <option value="">All</option>
+          {% for a in agents %}<option value="{{ a.id }}" {% if f.agent == a.id|stringformat:"d" %}selected{% endif %}>{{ a.name }}</option>{% endfor %}
+          <option value="none" {% if f.agent == 'none' %}selected{% endif %}>Company number</option>
+        </select>
+      </div>
+      {% endif %}
+      <div class="flex items-end gap-2">
+        <button class="flex-1 rounded-lg bg-[#00a86b] text-white font-semibold py-2">Show</button>
+        <a href="{% url 'crm_calls' %}" class="rounded-lg border border-gray-300 px-3 py-2 text-sm">Clear</a>
+      </div>
+    </form>
+
+    <div class="box">
+      <table class="log">
+        <thead><tr><th>Time</th><th>Agent</th><th>Page</th><th>Customer number</th><th class="hide-sm">Device</th></tr></thead>
+        <tbody>
+        {% for c in calls %}
+          <tr>
+            <td class="whitespace-nowrap">{{ c.created_at|date:"d M" }}<div class="sub">{{ c.created_at|date:"h:i A" }}</div></td>
+            <td>{% if c.agent_name %}{{ c.agent_name }}<div class="sub">{{ c.agent_phone }}</div>{% else %}Company number{% endif %}</td>
+            <td>{% if c.page_url %}<a href="{{ c.page_url }}" target="_blank" rel="noopener">{{ c.page_title|default:c.page_url|truncatechars:70 }}</a>{% endif %}<div class="sub">{{ c.get_category_display }}</div></td>
+            <td>
+              <input class="cust" type="tel" inputmode="numeric" maxlength="16" placeholder="Add number" value="{{ c.customer_phone }}"
+                     aria-label="Customer number" onchange="saveCustomer({{ c.id }}, this)">
+              <div class="sub saved" id="saved-{{ c.id }}"></div>
+            </td>
+            <td class="hide-sm">{{ c.device|default:"—" }}</td>
+          </tr>
+        {% empty %}
+          <tr><td colspan="5" class="py-10 text-center text-gray-400">No calls yet.</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      {% if page.has_other_pages %}
+      <div class="flex items-center justify-center gap-3 pt-3 text-sm">
+        {% if page.has_previous %}<a class="rounded-lg border px-3 py-1.5" href="?{{ page_qs }}{% if page_qs %}&{% endif %}page={{ page.previous_page_number }}">Previous</a>{% endif %}
+        <span>Page {{ page.number }} of {{ page.paginator.num_pages }}</span>
+        {% if page.has_next %}<a class="rounded-lg border px-3 py-1.5" href="?{{ page_qs }}{% if page_qs %}&{% endif %}page={{ page.next_page_number }}">Next</a>{% endif %}
+      </div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+const CSRF = '{{ csrf_token }}';
+// The website can't see who called: add the number from your phone's call log.
+function saveCustomer(id, input) {
+  const note = document.getElementById(`saved-${id}`);
+  fetch("{% url 'crm_call_customer' 0 %}".replace('/0/', `/${id}/`), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF },
+    body: JSON.stringify({ customer_phone: input.value }),
+  })
+    .then(r => r.json())
+    .then(d => {
+      if (!d.success) throw new Error(d.error || 'Could not save.');
+      input.value = d.customer_phone;
+      note.textContent = 'Saved';
+      setTimeout(() => { note.textContent = ''; }, 1500);
+    })
+    .catch(e => alert(e.message));
+}
+</script>
+{% endblock %}

@@ -654,6 +654,8 @@ def _auto_reply_and_transfer(session, user_number, message_text, user_message_id
     if isinstance(whatsapp_response, dict):
         wamid = (whatsapp_response.get("messages") or [{}])[0].get("id", "")
     _save_bot_reply_to_crm(session, reply, whatsapp_message_id=wamid)
+    # The "new lead" push shows what the customer wrote, not the fixed reply.
+    session.last_message = message_text[:500]
 
     # TODAY label + assign + AI off + notify the agent
     mark_lead_today(session)
@@ -1025,6 +1027,11 @@ def whatsapp_webhook(request):
                         last_message=message_text[:500],
                         updated_at=timezone.now(),
                     )
+                    try:
+                        from .push import notify_new_message
+                        notify_new_message(session, message_text)
+                    except Exception as e:
+                        print(f"[PUSH] message notification error: {e}")
                 return Response({"success": True})
 
             session.data["_processing"]       = True
@@ -1111,6 +1118,13 @@ def whatsapp_webhook(request):
             session.save(update_fields=["last_message"])
             if message_type == "text" and not is_flow_submission:
                 _categorise_from_message(session, message_text)
+            # Phone push to the agent of this chat (a new chat has none yet:
+            # its agent gets the "new lead" push when it is assigned).
+            try:
+                from .push import notify_new_message
+                notify_new_message(session, message_text)
+            except Exception as e:
+                print(f"[PUSH] message notification error: {e}")
         else:
             print(f"[DUPLICATE] Skipping CRM save for message ID {message_id} (already exists)")
 

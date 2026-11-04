@@ -2,6 +2,7 @@ from django.contrib import admin
 
 from .models import (
     Booking,
+    PushDevice,
     LeadCategoryRule,
     ChatSession,
     ChatMessage,
@@ -880,3 +881,115 @@ class BookingAdmin(admin.ModelAdmin):
     search_fields = ("code", "customer_name", "phone", "title")
     raw_id_fields = ("session",)
     readonly_fields = ("created_at", "updated_at", "paid_at")
+
+
+@admin.register(PushDevice)
+class PushDeviceAdmin(admin.ModelAdmin):
+    """Browsers / phones where a CRM user turned on notifications."""
+    list_display = ("user", "user_agent", "created_at", "last_seen_at")
+    list_filter = ("user",)
+    readonly_fields = ("user", "token", "user_agent", "created_at", "last_seen_at")
+
+
+# Website call routing (call_routing.py). The website's Call buttons dial
+# the active agents in turn; manage them here. The call log is /crm/calls/.
+import re
+
+from django import forms as dj_forms
+from django.utils import timezone as dj_tz
+
+from .call_routing import clear_roster_cache
+from .models import CALL_CATEGORY_CHOICES, CallAgent, CallLead, CallRoute, CallSettings
+
+
+class ClearRosterOnSave:
+    """The website reads the roster through a 60 s cache: drop it on every change."""
+    def save_model(self, request, obj, form, change):
+        super().save_model(request, obj, form, change)
+        clear_roster_cache()
+
+    def save_related(self, request, form, formsets, change):
+        super().save_related(request, form, formsets, change)
+        clear_roster_cache()
+
+    def delete_model(self, request, obj):
+        super().delete_model(request, obj)
+        clear_roster_cache()
+
+    def delete_queryset(self, request, queryset):
+        super().delete_queryset(request, queryset)
+        clear_roster_cache()
+
+
+class CallAgentForm(dj_forms.ModelForm):
+    class Meta:
+        model = CallAgent
+        fields = "__all__"
+
+    def clean_phone(self):
+        digits = re.sub(r"\D", "", self.cleaned_data["phone"] or "")[-10:]
+        if not re.match(r"^[6-9]\d{9}$", digits):
+            raise dj_forms.ValidationError("Enter a 10-digit Indian mobile number.")
+        return digits
+
+
+@admin.register(CallAgent)
+class CallAgentAdmin(ClearRosterOnSave, admin.ModelAdmin):
+    """Call agents: the active ones take turns on the website's Call buttons
+    (one per rotation slot, in Order). Switch off to take someone out."""
+    form = CallAgentForm
+    list_display = ("name", "phone", "is_active", "order", "user", "calls_today")
+    list_editable = ("phone", "is_active", "order", "user")
+    ordering = ("order", "id")
+
+    def get_changelist_form(self, request, **kwargs):
+        kwargs.setdefault("form", CallAgentForm)  # same number check when edited in the list
+        return super().get_changelist_form(request, **kwargs)
+
+    @admin.display(description="Calls today")
+    def calls_today(self, obj):
+        return obj.leads.filter(created_at__date=dj_tz.localdate()).count()
+
+
+@admin.register(CallRoute)
+class CallRouteAdmin(ClearRosterOnSave, admin.ModelAdmin):
+    """Optional: a kind of page whose calls go only to the agents picked here.
+    Pages without a route use every active agent. The About page always dials
+    the company number."""
+    list_display = ("category", "is_active", "agent_names")
+    filter_horizontal = ("agents",)
+
+    def formfield_for_choice_field(self, db_field, request, **kwargs):
+        if db_field.name == "category":
+            kwargs["choices"] = [(k, v) for k, v in CALL_CATEGORY_CHOICES if k != "about"]
+        return super().formfield_for_choice_field(db_field, request, **kwargs)
+
+    @admin.display(description="Agents")
+    def agent_names(self, obj):
+        return ", ".join(a.name for a in obj.agents.all()) or "—"
+
+
+@admin.register(CallSettings)
+class CallSettingsAdmin(ClearRosterOnSave, admin.ModelAdmin):
+    list_display = ("rotation_minutes", "updated_at")
+
+    def has_add_permission(self, request):
+        return not CallSettings.objects.exists()
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+
+@admin.register(CallLead)
+class CallLeadAdmin(admin.ModelAdmin):
+    """The call log (also on /crm/calls/): one row per tap on a Call button."""
+    list_display = ("created_at", "agent_name", "agent_phone", "category", "device", "page_title")
+    list_filter = ("agent", "category", "device", "created_at")
+    search_fields = ("page_url", "page_title", "agent_name")
+    date_hierarchy = "created_at"
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False

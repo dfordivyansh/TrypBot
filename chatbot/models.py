@@ -1278,3 +1278,116 @@ class Booking(models.Model):
 
     def __str__(self):
         return f"{self.code} - {self.title or self.get_booking_type_display()}"
+
+
+# =========================================================
+# PUSH DEVICE (Firebase Cloud Messaging token of a CRM user's browser)
+# =========================================================
+
+class PushDevice(models.Model):
+    """A browser / phone where a CRM user allowed notifications (chatbot/push.py)."""
+
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="push_devices")
+    token = models.CharField(max_length=512, unique=True)
+    user_agent = models.CharField(max_length=255, blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+    last_seen_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"{self.user.username} - {self.user_agent[:40]}"
+
+
+# =========================================================
+# 📞 WEBSITE CALL ROUTING (2026-11-03)
+# =========================================================
+# The website's Call buttons keep showing the company number, but a tap
+# dials the agent on duty: the active agents take turns, one per
+# rotation slot (CallSettings.rotation_minutes, 60 by default), round the
+# clock. A page category can have its own agents (CallRoute); otherwise
+# every active agent is in the turn. Every tap is saved as a CallLead and
+# shown on the CRM "Calls" page (the call log: how many calls went to which
+# agent). Agents, routes and the rotation time are managed in Django Admin.
+# See chatbot/call_routing.py.
+
+CALL_CATEGORY_CHOICES = [
+    ("home", "Home page"),
+    ("about", "About page (company number, no rotation)"),
+    ("tours_short", "1-2 day tours"),
+    ("tours", "Other tour packages"),
+    ("cabs", "Cab pages"),
+    ("routes", "Route pages"),
+    ("destinations", "Destination pages"),
+    ("temples", "Temple pages"),
+    ("ai_planner", "AI Trip Planner"),
+    ("other", "Other pages"),
+]
+
+
+class CallAgent(models.Model):
+    name = models.CharField(max_length=80)
+    phone = models.CharField(max_length=10, help_text="10-digit Indian mobile number, without +91")
+    user = models.ForeignKey(
+        User, null=True, blank=True, on_delete=models.SET_NULL, related_name="call_agents",
+        help_text="CRM user who sees this agent's calls",
+    )
+    is_active = models.BooleanField(default=True, help_text="Off = not in the call turn")
+    order = models.PositiveIntegerField(default=1, help_text="Turn order (lowest first)")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["order", "id"]
+
+    def __str__(self):
+        return f"{self.name} ({self.phone})"
+
+
+class CallRoute(models.Model):
+    category = models.CharField(max_length=30, choices=CALL_CATEGORY_CHOICES, unique=True)
+    agents = models.ManyToManyField(CallAgent, blank=True, related_name="routes")
+    is_active = models.BooleanField(default=True)
+
+    def __str__(self):
+        return self.get_category_display()
+
+
+class CallSettings(models.Model):
+    rotation_minutes = models.PositiveIntegerField(default=60, help_text="How long each agent stays on duty")
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Call settings"
+        verbose_name_plural = "Call settings"
+
+    @classmethod
+    def get(cls):
+        obj, _ = cls.objects.get_or_create(pk=1)
+        return obj
+
+    def __str__(self):
+        return f"Rotate every {self.rotation_minutes} min"
+
+
+class CallLead(models.Model):
+    """One tap on a website Call button: the call log."""
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+    agent = models.ForeignKey(CallAgent, null=True, blank=True, on_delete=models.SET_NULL, related_name="leads")
+    agent_name = models.CharField(max_length=80, blank=True)
+    agent_phone = models.CharField(max_length=15, blank=True)
+    category = models.CharField(max_length=30, choices=CALL_CATEGORY_CHOICES, default="other")
+    page_url = models.URLField(max_length=500, blank=True)
+    page_title = models.CharField(max_length=300, blank=True)
+    referrer = models.URLField(max_length=500, blank=True)
+    device = models.CharField(max_length=20, blank=True)
+    visitor_id = models.CharField(max_length=40, blank=True)
+    ip = models.GenericIPAddressField(null=True, blank=True)
+    # The website can't see who is calling: the agent may add it later from
+    # their phone's call log.
+    customer_phone = models.CharField(max_length=10, blank=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        verbose_name = "Call log entry"
+        verbose_name_plural = "Call log"
+
+    def __str__(self):
+        return f"{self.created_at:%d %b %H:%M} → {self.agent_name or 'company number'}"

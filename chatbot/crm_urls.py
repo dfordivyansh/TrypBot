@@ -5,6 +5,8 @@
 from django.urls import path
 from . import crm_views
 from . import campaign_views
+from . import push_views
+from . import call_routing
 
 urlpatterns = [
 
@@ -186,6 +188,13 @@ urlpatterns = [
         crm_views.crm_move_chat,
         name="crm_move_chat"
     ),
+
+    # --------------------------------------------------
+    # PUSH NOTIFICATIONS (Firebase) — chatbot/push_views.py
+    # --------------------------------------------------
+    path("push.js", push_views.push_script, name="crm_push_js"),
+    path("push-sw.js", push_views.push_service_worker, name="crm_push_sw"),
+    path("push/register/", push_views.push_register, name="crm_push_register"),
     path(
         "chat/<int:session_id>/block/",
         crm_views.crm_block_chat,
@@ -341,4 +350,10 @@ urlpatterns = [
     path("contacts/tags/apply/", campaign_views.contacts_tag_apply, name="crm_contacts_tag_apply"),
     path("contacts/opt-out/", campaign_views.contacts_opt_out, name="crm_contacts_opt_out"),
     path("contacts/import/", campaign_views.contacts_import, name="crm_contacts_import"),
+
+    # --------------------------------------------------
+    # WEBSITE CALL LOG (call_routing.py; agents are managed in Admin)
+    # --------------------------------------------------
+    path("calls/", call_routing.crm_calls, name="crm_calls"),
+    path("calls/<int:call_id>/customer/", call_routing.crm_call_customer, name="crm_call_customer"),
 ]

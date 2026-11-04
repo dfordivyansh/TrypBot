@@ -23,6 +23,16 @@ LABEL_NEW_LEAD = "NEW LEAD"
 LABEL_TODAY = "TODAY"
 
 
+def _notify_assigned(session):
+    """Phone / browser push to the sales person a lead was just assigned to (chatbot/push.py)."""
+    try:
+        from .push import notify_lead_assigned
+        if session.assigned_sales_person_id:
+            notify_lead_assigned(session, session.assigned_sales_person_id)
+    except Exception as e:
+        print(f"[PUSH] assignment notification error: {e}")
+
+
 # =========================================================
 # SOURCE-BASED ASSIGNMENT
 # =========================================================
@@ -80,6 +90,7 @@ def assign_website_lead(session):
 
             session.assigned_sales_person = next_agent.user
             session.save(update_fields=["assigned_sales_person"])
+            _notify_assigned(session)
             print(f"[WEBSITE ROUND ROBIN] Assigned session {session.id} to {next_agent.user.username}")
 
             tracker.last_assigned_order = next_agent.assignment_order
@@ -151,6 +162,7 @@ def assign_meta_lead(session):
 
             session.assigned_sales_person = next_agent.user
             session.save(update_fields=["assigned_sales_person"])
+            _notify_assigned(session)
             print(f"[META ROUND ROBIN] Assigned session {session.id} to {next_agent.user.username}")
 
             tracker.last_assigned_order = next_agent.assignment_order
@@ -256,6 +268,7 @@ def assign_by_category(session):
             rule.save(update_fields=["last_assigned_user_id"])
             session.assigned_sales_person = next_user
             session.save(update_fields=["assigned_sales_person"])
+            _notify_assigned(session)
             SalesProfile.objects.filter(user=next_user).update(total_leads=models_F("total_leads") + 1)
         print(f"[CATEGORY ASSIGNMENT] {category}: session {session.id} -> {next_user.username}")
         return next_user
@@ -376,6 +389,7 @@ def assign_by_destination(session):
         # Assign the sales person
         session.assigned_sales_person = sales_person
         session.save(update_fields=["assigned_sales_person"])
+        _notify_assigned(session)
         print(f"[DESTINATION ASSIGNMENT] Assigned session {session.id} to {sales_person.username}")
         
         # Update sales person stats
@@ -460,6 +474,7 @@ def assign_next_sales_agent(session):
 
             session.assigned_sales_person = next_agent.user
             session.save(update_fields=["assigned_sales_person"])
+            _notify_assigned(session)
             print(f"[ROUND ROBIN] Assigned session {session.id} to {next_agent.user.username}")
 
             # Advance the pointer INSIDE the same transaction so it's always

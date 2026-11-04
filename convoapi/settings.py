@@ -225,6 +225,7 @@ CORS_ALLOWED_ORIGINS = [
     "https://trypbot.duckdns.org",
     "https://trypdeals.com",
     "https://www.trypdeals.com",
+    "http://localhost:4173",  # website preview (call roster, call_routing.py)
 ]
 
 CSRF_TRUSTED_ORIGINS = env_list("DJANGO_EXTRA_CSRF_ORIGINS") + [
@@ -261,6 +262,29 @@ WHATSAPP_PHONE_NUMBER_ID = os.environ.get("WHATSAPP_PHONE_NUMBER_ID", "")
 WHATSAPP_DISPLAY_NUMBER = os.environ.get("WHATSAPP_DISPLAY_NUMBER", "918766247711")
 
 WHATSAPP_VERIFY_TOKEN = os.environ.get("WHATSAPP_VERIFY_TOKEN", "")
+
+# Push notifications to CRM agents (chatbot/push.py): Firebase Cloud Messaging.
+# Web config: the same values as the Group-Tours app (VITE_FIREBASE_* in .env).
+# Sending needs the project's service account key (Firebase console ->
+# Project settings -> Service accounts -> Generate new private key), saved
+# on the server as FIREBASE_SERVICE_ACCOUNT_FILE - never in git.
+def _env_first(*names):
+    return next((os.environ[n] for n in names if os.environ.get(n)), "")
+
+
+FIREBASE_WEB_CONFIG = {
+    "apiKey": _env_first("FIREBASE_API_KEY", "VITE_FIREBASE_API_KEY"),
+    "authDomain": _env_first("FIREBASE_AUTH_DOMAIN", "VITE_FIREBASE_AUTH_DOMAIN"),
+    "projectId": _env_first("FIREBASE_PROJECT_ID", "VITE_FIREBASE_PROJECT_ID"),
+    "storageBucket": _env_first("FIREBASE_STORAGE_BUCKET", "VITE_FIREBASE_STORAGE_BUCKET"),
+    "messagingSenderId": _env_first("FIREBASE_MESSAGING_SENDER_ID", "VITE_FIREBASE_MESSAGING_SENDER_ID"),
+    "appId": _env_first("FIREBASE_APP_ID", "VITE_FIREBASE_APP_ID"),
+}
+FIREBASE_VAPID_KEY = _env_first("FIREBASE_VAPID_KEY", "VITE_FIREBASE_VAPID_KEY")
+FIREBASE_SERVICE_ACCOUNT_FILE = os.environ.get(
+    "FIREBASE_SERVICE_ACCOUNT_FILE", str(BASE_DIR / "firebase-service-account.json"))
+# Address of the CRM, for the links in notifications.
+CRM_BASE_URL = os.environ.get("CRM_BASE_URL", "https://trypbot.duckdns.org")
 
 # Off: the bot does not chat. A customer's message gets one fixed reply
 # (WHATSAPP_AUTO_REPLY_TEXT) and the chat goes to a sales agent with AI off.

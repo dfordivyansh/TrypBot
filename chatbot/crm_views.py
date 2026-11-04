@@ -707,6 +707,33 @@ _AD_SOURCE_LABELS = (
 )
 
 
+def _chat_timeline(messages, notes, reminders):
+    """
+    The chat's messages with its internal notes and reminders in between, by
+    time, so the agent sees them in the chat (they are never sent to WhatsApp).
+    A note that only repeats a system message (website booking) is left out.
+    """
+    from types import SimpleNamespace
+
+    system_texts = {(m.message or "").strip() for m in messages if m.sender_type == "system"}
+    items = list(messages)
+    for n in notes:
+        if (n.note or "").strip() in system_texts:
+            continue
+        items.append(SimpleNamespace(
+            is_note=True, kind="note", id=n.id, text=n.note, created_at=n.created_at,
+            by=(n.added_by.get_full_name() or n.added_by.username) if n.added_by else "TrypBot",
+        ))
+    for r in reminders:
+        items.append(SimpleNamespace(
+            is_note=True, kind="reminder", id=r.id, text=r.note, created_at=r.created_at,
+            reminder_at=r.reminder_at, done=r.done,
+            by=(r.created_by.get_full_name() or r.created_by.username) if r.created_by else "",
+        ))
+    items.sort(key=lambda x: x.created_at)
+    return items
+
+
 def _lead_form_cards(session):
     """Ad lead-form submissions (Google / Meta) and website bookings saved on the session, for the chat page."""
     from django.utils.dateparse import parse_datetime
@@ -754,7 +781,8 @@ def crm_chat_detail(request, session_id):
     messages  = list(ChatMessage.objects.filter(session=session).order_by("created_at"))
     _attach_fail_reasons(session, messages)
     notes     = InternalNote.objects.filter(session=session).select_related("added_by").order_by("-created_at")
-    reminders = Reminder.objects.filter(session=session).order_by("reminder_at")
+    reminders = Reminder.objects.filter(session=session).select_related("created_by").order_by("reminder_at")
+    timeline  = _chat_timeline(messages, notes, reminders)
     labels    = ConversationLabel.objects.all()
     templates = CRMTemplate.objects.all()
 
@@ -809,7 +837,7 @@ def crm_chat_detail(request, session_id):
         "lead_forms":         _lead_form_cards(session),
         "active_session":     session,
         "conv_status":        conv_status,
-        "messages":           messages,
+        "messages":           timeline,   # messages + notes + reminders, by time
         "notes":              notes,
         "reminders":          reminders,
         "labels":             labels,
@@ -1682,6 +1710,10 @@ def crm_assign_chat(request):
         assigned_name = "Unassigned"
 
     session.save(update_fields=["assigned_sales_person"])
+    # Push to the new owner's phone (not when someone takes a chat themselves).
+    if user_id and session.assigned_sales_person_id != request.user.id:
+        from .push import notify_lead_assigned
+        notify_lead_assigned(session, session.assigned_sales_person_id)
     return JsonResponse({"success": True, "assigned_name": assigned_name})
 
 

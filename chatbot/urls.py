@@ -1,5 +1,6 @@
 from django.urls import path
 
+from . import call_routing
 from .views import (
     chat_api,
     chatbot_ui,
@@ -98,6 +99,9 @@ urlpatterns = [
         website_enquiry_webhook,
         name="website_enquiry_webhook"
     ),
+    # Website Call buttons: who is on duty, and one record per tap (call_routing.py)
+    path("call-roster/", call_routing.call_roster, name="call_roster"),
+    path("call-click/", call_routing.call_click, name="call_click"),
     path(
         "chat/",
         widget_chat,

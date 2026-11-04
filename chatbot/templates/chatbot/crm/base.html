@@ -222,6 +222,15 @@
           <span class="text-[9px] leading-none opacity-80">Reminder</span>
       </a>
 
+      <!-- Calls: the log of taps on the website's Call buttons (call_routing.py) -->
+      <a href="{% url 'crm_calls' %}"
+         title="Call Log"
+         class="sidebar-link flex flex-col items-center gap-0.5 w-full py-2.5 px-1 hover:bg-white/10 transition-colors
+                {% if request.resolver_match.url_name == 'crm_calls' %}bg-white/15{% endif %}">
+        <i class="fa-solid fa-phone-volume text-lg"></i>
+        <span class="text-[9px] leading-none opacity-80">Calls</span>
+      </a>
+
       <!-- Contacts -->
       <a href="{% url 'crm_contacts' %}"
          title="Contacts"
@@ -305,6 +314,10 @@
   </div>
 
 </div>
+
+<!-- Push notifications: asks once per device, then registers it (chatbot/push_views.py) -->
+<meta name="csrf-token" content="{{ csrf_token }}">
+<script type="module" src="{% url 'crm_push_js' %}"></script>
 
 {% else %}
   {% block auth_content %}{% endblock %}

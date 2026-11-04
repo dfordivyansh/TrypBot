@@ -81,6 +81,8 @@ html, body {
 /* "Select Filters" sheet */
 .fs-backdrop { position: fixed; inset: 0; z-index: 75; background: rgba(0,0,0,.45); display: none; align-items: center; justify-content: center; padding: 16px; }
 .fs-backdrop.open { display: flex; }
+.msg-text-content a { color: #0369a1; text-decoration: underline; word-break: break-all; }
+.msg-text-content a:hover { color: #075985; }
 .rename-field { color: #111827 !important; background: #fff !important; caret-color: #111827; }
 .rename-field::placeholder { color: #9ca3af; opacity: 1; }
 .move-opt { display: flex; align-items: center; gap: 12px; width: 100%; padding: 14px 16px; border: 1px solid #d1d5db; border-radius: 10px; font-size: 16px; font-weight: 600; color: #111827; background: #fff; text-align: left; }
@@ -1001,7 +1003,26 @@ html, body {
     </div>
     {% endif %}
 
-    {% if msg.sender_type == 'user' %}
+    {% if msg.is_note %}
+    <!-- ── Internal note / reminder (CRM only, never sent to the customer) ── -->
+    <div class="flex justify-center my-2 px-2 chat-note" data-note-kind="{{ msg.kind }}">
+      <div class="max-w-[92%] sm:max-w-[70%] w-full rounded-xl px-3 py-2 shadow-sm text-[13px] leading-snug
+                  {% if msg.kind == 'reminder' %}bg-orange-50 border border-orange-200{% else %}bg-yellow-50 border border-yellow-200{% endif %}">
+        <div class="flex items-center gap-1.5 font-semibold mb-1 {% if msg.kind == 'reminder' %}text-orange-700{% else %}text-yellow-800{% endif %}">
+          {% if msg.kind == 'reminder' %}
+            <i class="fa-solid fa-bell"></i> Reminder · {{ msg.reminder_at|date:"d M Y, h:i A" }}
+            {% if msg.done %}<span class="text-[10px] font-normal text-green-600">(done)</span>{% endif %}
+          {% else %}
+            <i class="fa-solid fa-note-sticky"></i> Note
+          {% endif %}
+          <span class="ml-auto text-[10px] font-normal text-gray-400">only for the team</span>
+        </div>
+        <div class="text-gray-800 whitespace-pre-wrap break-words msg-text-content">{{ msg.text|urlize }}</div>
+        <div class="text-[10px] text-gray-400 text-right mt-1">{% if msg.by %}{{ msg.by }} · {% endif %}{{ msg.created_at|date:"d M, h:i A" }}</div>
+      </div>
+    </div>
+
+    {% elif msg.sender_type == 'user' %}
     <!-- ── Incoming message ── -->
     <div class="flex justify-start mb-1 msg-row msg-row-in relative" data-msg-id="{{ msg.id }}">
       <div class="max-w-[85%] sm:max-w-[65%] relative">
@@ -1013,11 +1034,11 @@ html, body {
           {% if msg.media_type == 'image' %}
             <img src="{% if msg.media_url %}{{ msg.media_url }}{% else %}{% url 'crm_media_proxy' msg.id %}{% endif %}"
                  class="msg-img" onclick="openLightbox(this.src)" alt="image">
-            {% if msg.message %}<p class="text-sm text-gray-800 leading-relaxed whitespace-pre-wrap break-words mt-1 msg-text-content">{{ msg.message }}</p>{% endif %}
+            {% if msg.message %}<p class="text-sm text-gray-800 leading-relaxed whitespace-pre-wrap break-words mt-1 msg-text-content">{{ msg.message|urlize }}</p>{% endif %}
           {% elif msg.media_type == 'video' %}
             <video src="{% if msg.media_url %}{{ msg.media_url }}{% else %}{% url 'crm_media_proxy' msg.id %}{% endif %}"
                    controls class="msg-video"></video>
-            {% if msg.message %}<p class="text-sm text-gray-800 leading-relaxed whitespace-pre-wrap break-words mt-1 msg-text-content">{{ msg.message }}</p>{% endif %}
+            {% if msg.message %}<p class="text-sm text-gray-800 leading-relaxed whitespace-pre-wrap break-words mt-1 msg-text-content">{{ msg.message|urlize }}</p>{% endif %}
           {% elif msg.media_type == 'audio' %}
             <audio controls class="w-full mb-1"
                    src="{% if msg.media_url %}{{ msg.media_url }}{% else %}{% url 'crm_media_proxy' msg.id %}{% endif %}"></audio>
@@ -1031,10 +1052,10 @@ html, body {
               </div>
             </a>
             {% if msg.message and msg.message != msg.media_filename %}
-            <p class="text-sm text-gray-800 leading-relaxed whitespace-pre-wrap break-words mt-1 msg-text-content">{{ msg.message }}</p>
+            <p class="text-sm text-gray-800 leading-relaxed whitespace-pre-wrap break-words mt-1 msg-text-content">{{ msg.message|urlize }}</p>
             {% endif %}
           {% else %}
-            <p class="text-sm text-gray-800 leading-relaxed whitespace-pre-wrap break-words msg-text-content">{{ msg.message }}</p>
+            <p class="text-sm text-gray-800 leading-relaxed whitespace-pre-wrap break-words msg-text-content">{{ msg.message|urlize }}</p>
           {% endif %}
 
           <div class="text-[10px] text-gray-400 mt-1 text-right">{{ msg.created_at|date:"h:i A" }}</div>
@@ -1072,11 +1093,11 @@ html, body {
           {% if msg.media_type == 'image' %}
             <img src="{% if msg.media_url %}{{ msg.media_url }}{% else %}{% url 'crm_media_proxy' msg.id %}{% endif %}"
                  class="msg-img" onclick="openLightbox(this.src)" alt="image">
-            {% if msg.message %}<p class="text-sm text-gray-800 leading-relaxed whitespace-pre-wrap break-words mt-1 msg-text-content">{{ msg.message }}</p>{% endif %}
+            {% if msg.message %}<p class="text-sm text-gray-800 leading-relaxed whitespace-pre-wrap break-words mt-1 msg-text-content">{{ msg.message|urlize }}</p>{% endif %}
           {% elif msg.media_type == 'video' %}
             <video src="{% if msg.media_url %}{{ msg.media_url }}{% else %}{% url 'crm_media_proxy' msg.id %}{% endif %}"
                    controls class="msg-video"></video>
-            {% if msg.message %}<p class="text-sm text-gray-800 leading-relaxed whitespace-pre-wrap break-words mt-1 msg-text-content">{{ msg.message }}</p>{% endif %}
+            {% if msg.message %}<p class="text-sm text-gray-800 leading-relaxed whitespace-pre-wrap break-words mt-1 msg-text-content">{{ msg.message|urlize }}</p>{% endif %}
           {% elif msg.media_type == 'audio' %}
             <audio controls class="w-full mb-1"
                    src="{% if msg.media_url %}{{ msg.media_url }}{% else %}{% url 'crm_media_proxy' msg.id %}{% endif %}"></audio>
@@ -1090,10 +1111,10 @@ html, body {
               </div>
             </a>
             {% if msg.message and msg.message != msg.media_filename %}
-            <p class="text-sm text-gray-800 leading-relaxed whitespace-pre-wrap break-words mt-1 msg-text-content">{{ msg.message }}</p>
+            <p class="text-sm text-gray-800 leading-relaxed whitespace-pre-wrap break-words mt-1 msg-text-content">{{ msg.message|urlize }}</p>
             {% endif %}
           {% else %}
-            <p class="text-sm text-gray-800 leading-relaxed whitespace-pre-wrap break-words msg-text-content">{{ msg.message }}</p>
+            <p class="text-sm text-gray-800 leading-relaxed whitespace-pre-wrap break-words msg-text-content">{{ msg.message|urlize }}</p>
           {% endif %}
 
           <div class="flex items-center justify-end gap-1 mt-1">
@@ -1967,6 +1988,43 @@ function escHtml(s) {
     .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 }
 
+// Links in (already escaped) message text become clickable, like the
+// server-side |urlize. A trailing . , ! ? ) stays outside the link.
+function linkify(escaped) {
+  return String(escaped || '').replace(/\b(?:https?:\/\/|www\.)[^\s<]+/gi, m => {
+    const tail = (m.match(/[.,!?;:)\]]+$/) || [''])[0];
+    const url = tail ? m.slice(0, -tail.length) : m;
+    const href = /^www\./i.test(url) ? 'https://' + url : url;
+    return `<a href="${href}" target="_blank" rel="noopener noreferrer">${url}</a>${tail}`;
+  });
+}
+
+// Message links open in a new tab, so the CRM stays open.
+document.addEventListener('click', e => {
+  const a = e.target.closest && e.target.closest('.msg-text-content a');
+  if (a && a.href) { e.preventDefault(); window.open(a.href, '_blank', 'noopener'); }
+});
+
+// A note / reminder saved from this page, shown in the chat at once.
+function appendNoteBubble(kind, text, when) {
+  const box = document.getElementById('chatMessages');
+  if (!box) return;
+  const rem = kind === 'reminder';
+  const el = document.createElement('div');
+  el.className = 'flex justify-center my-2 px-2 chat-note';
+  el.innerHTML = `<div class="max-w-[92%] sm:max-w-[70%] w-full rounded-xl px-3 py-2 shadow-sm text-[13px] leading-snug ${rem ? 'bg-orange-50 border border-orange-200' : 'bg-yellow-50 border border-yellow-200'}">
+      <div class="flex items-center gap-1.5 font-semibold mb-1 ${rem ? 'text-orange-700' : 'text-yellow-800'}">
+        <i class="fa-solid ${rem ? 'fa-bell' : 'fa-note-sticky'}"></i> ${rem ? 'Reminder · ' + escHtml(when || '') : 'Note'}
+        <span class="ml-auto text-[10px] font-normal text-gray-400">only for the team</span>
+      </div>
+      <div class="text-gray-800 whitespace-pre-wrap break-words msg-text-content">${linkify(escHtml(text))}</div>
+      <div class="text-[10px] text-gray-400 text-right mt-1">You · just now</div>
+    </div>`;
+  const typing = document.getElementById('typingIndicator');
+  if (typing && typing.parentNode === box) box.insertBefore(el, typing); else box.appendChild(el);
+  box.scrollTop = box.scrollHeight;
+}
+
 function scrollToBottom() {
   const el = document.getElementById('chatMessages');
   if (el) el.scrollTop = el.scrollHeight;
@@ -2077,7 +2135,6 @@ function setWsDot(color, title) {
 }
 
 function handleWsLabelChange(data) {
-  playHotSound();
   const badge = document.querySelector(`#sidebar-session-${data.session_id} [id^="sidebar-label-"]`);
   if (badge) {
     const key = (data.label || '').toUpperCase().replace(/\s/g, '');
@@ -2085,6 +2142,9 @@ function handleWsLabelChange(data) {
     if (data.label_color) badge.style.background = data.label_color;
     badge.textContent = data.label;
   }
+  // "TODAY" comes with every new lead assignment: no popup for it.
+  if ((data.label || '').toUpperCase() === 'TODAY') return;
+  playHotSound();
   showWsToast('hot',
     `<i class="fa-solid fa-fire text-red-400 mr-2"></i>` +
     `<div><div class="font-semibold text-sm">${escHtml(data.session_name)}</div>` +
@@ -2170,15 +2230,8 @@ function handleWsChatClosed(data) {
   );
 }
 
-function handleWsChatAssigned(data) {
-  playMessageSound();
-  
-  showWsToast('assigned',
-    `<i class="fa-solid fa-user-plus text-green-400 mr-2"></i>` +
-    `<div><div class="font-semibold text-sm">Chat Assigned — ${escHtml(data.session_name)}</div>` +
-    `<div class="text-xs text-gray-300">You have been assigned this lead</div></div>`
-  );
-}
+// No popup when a lead is assigned (the phone push notification tells the agent).
+function handleWsChatAssigned(data) {}
 
 function sendTemplate(sessionId, templateId) {
   fetch(`/crm/chat/${sessionId}/send-template/`, {
@@ -2229,16 +2282,8 @@ function checkForNewAssignments() {
     .then(r => r.json())
     .then(data => {
       if (data.success) {
-        // Handle new assignments
-        if (data.assignments) {
-          data.assignments.forEach(assignment => {
-            if (!knownAssignmentIds.has(assignment.id)) {
-              knownAssignmentIds.add(assignment.id);
-              showAssignmentNotification(assignment);
-            }
-          });
-        }
-        
+        // New assignments: no popup (see handleWsChatAssigned).
+
         // Handle new messages on assigned chats
         if (data.new_messages) {
           data.new_messages.forEach(msg => {
@@ -2253,6 +2298,7 @@ function checkForNewAssignments() {
         if (data.label_changes) {
           data.label_changes.forEach(change => {
             const key = `${change.session_id}_${change.label}`;
+            if ((change.label || '').toUpperCase() === 'TODAY') return;   // set with each assignment
             if (!knownLabelChangeIds.has(key)) {
               knownLabelChangeIds.add(key);
               showLabelChangeNotification(change);
@@ -2262,15 +2308,6 @@ function checkForNewAssignments() {
       }
     })
     .catch(err => console.error('Assignment check error:', err));
-}
-
-function showAssignmentNotification(assignment) {
-  playMessageSound();
-  showWsToast('assigned',
-    `<i class="fa-solid fa-user-plus text-green-400 mr-2"></i>` +
-    `<div><div class="font-semibold text-sm">Chat Assigned — ${escHtml(assignment.session_name)}</div>` +
-    `<div class="text-xs text-gray-300">You have been assigned this lead</div></div>`
-  );
 }
 
 function showNewMessageNotification(msg) {
@@ -2636,7 +2673,7 @@ function appendTextMessage(opts) {
     }
 
     const textHtml = opts.text
-      ? `<p class="text-sm text-gray-800 leading-relaxed whitespace-pre-wrap break-words${mediaHtml ? ' mt-1' : ''} msg-text-content">${escHtml(opts.text)}</p>`
+      ? `<p class="text-sm text-gray-800 leading-relaxed whitespace-pre-wrap break-words${mediaHtml ? ' mt-1' : ''} msg-text-content">${linkify(escHtml(opts.text))}</p>`
       : '';
 
     row.innerHTML = `
@@ -2687,7 +2724,7 @@ function appendTextMessage(opts) {
     }
 
     const textHtml = opts.text
-      ? `<p class="text-sm text-gray-800 leading-relaxed whitespace-pre-wrap break-words${mediaHtml ? ' mt-1' : ''} msg-text-content">${escHtml(opts.text)}</p>`
+      ? `<p class="text-sm text-gray-800 leading-relaxed whitespace-pre-wrap break-words${mediaHtml ? ' mt-1' : ''} msg-text-content">${linkify(escHtml(opts.text))}</p>`
       : '';
 
     row.innerHTML = `
@@ -2738,7 +2775,7 @@ function appendFileMessage({ tempId, file, objUrl, isImage, isVideo, isAudio, ca
   }
 
   const captionHtml = caption
-    ? `<p class="text-sm text-gray-700 mt-1 whitespace-pre-wrap break-words msg-text-content">${escHtml(caption)}</p>` : '';
+    ? `<p class="text-sm text-gray-700 mt-1 whitespace-pre-wrap break-words msg-text-content">${linkify(escHtml(caption))}</p>` : '';
 
   row.innerHTML = `
     <div class="max-w-[85%] sm:max-w-[65%] relative">
@@ -3005,6 +3042,7 @@ function addNote() {
         </button>
       </div>`;
     document.getElementById('notesList').prepend(el);
+    appendNoteBubble('note', data.note.text);
   }).catch(() => {});
 }
 
@@ -3034,6 +3072,7 @@ function addReminder() {
     document.getElementById('remEmpty')?.remove();
     document.getElementById('reminderNote').value = '';
     document.getElementById('reminderAt').value   = '';
+    appendNoteBubble('reminder', note, new Date(at).toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }));
     const el = document.createElement('div');
     el.id = `rem-${data.reminder.id}`;
     el.className = 'bg-blue-50 border border-blue-200 rounded-xl p-3 shadow-sm';
@@ -3457,6 +3496,8 @@ function saveNote() {
       const failed = res.find(r => !r.success);
       if (failed) throw new Error(failed.error || 'failed');
       closeNoteSheet();
+      appendNoteBubble('note', note);
+      if (when) appendNoteBubble('reminder', note, new Date(`${when}T10:00`).toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }));
       phToast(when ? 'Note and reminder saved' : 'Note saved');
     })
     .catch(err => phToast('Could not save: ' + err.message))
