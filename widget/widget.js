@@ -1015,27 +1015,55 @@
    * @param {string} text - Raw message text
    * @returns {string} Formatted HTML
    */
+  // Links in a message: https://..., www..., or a bare domain (trypdeals.com/...).
+  // The char before is kept in group 1 (no lookbehind: older iPhones can't parse it),
+  // and an email address (x@gmail.com) is not a link.
+  var LINK_RE = /(^|[^@\w.\/])(https?:\/\/[^\s<]+|www\.[^\s<]+|[a-z0-9-]+(?:\.[a-z0-9-]+)*\.(?:com|in|org|net|co|io|travel|info)\b(?:\/[^\s<]*)?)/gi;
+
+  function escapeAttr(s) {
+    return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+
+  function linkHtml(raw) {
+    var tail = (raw.match(/[.,!?;:)\]]+$/) || [''])[0];   // "see x.com." -> the dot stays text
+    var url = tail ? raw.slice(0, -tail.length) : raw;
+    var href = /^https?:\/\//i.test(url) ? url : 'https://' + url;
+    return '<a href="' + escapeAttr(href) + '" target="_blank" rel="noopener noreferrer" ' +
+      'style="color:inherit;text-decoration:underline;word-break:break-all">' + escapeAttr(url) + '</a>' + escapeAttr(tail);
+  }
+
   function formatMessage(text) {
     if (!text) return '';
-    
+
+    // Links are taken out first, so the escaping and the bold / italic rules
+    // below don't break them (an "_" in utm_source used to turn into <em>).
+    var links = [];
+    var formatted = String(text).replace(LINK_RE, function (m, before, link) {
+      links.push(link);
+      return before + '\u0000' + (links.length - 1) + '\u0000';
+    });
+
     // Escape HTML to prevent XSS
-    let formatted = text
+    formatted = formatted
       .replace(/&/g, '&amp;')
       .replace(/</g, '&lt;')
       .replace(/>/g, '&gt;');
-    
+
     // Convert line breaks to <br>
     formatted = formatted.replace(/\n\n/g, '<br><br>');
     formatted = formatted.replace(/\n/g, '<br>');
-    
+
     // Bold text: **text** or __text__
     formatted = formatted.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
     formatted = formatted.replace(/__(.*?)__/g, '<strong>$1</strong>');
-    
+
     // Italic text: *text* or _text_
     formatted = formatted.replace(/\*(.*?)\*/g, '<em>$1</em>');
     formatted = formatted.replace(/_(.*?)_/g, '<em>$1</em>');
-    
+
+    // Put the links back as clickable links (open in a new tab).
+    formatted = formatted.replace(/\u0000(\d+)\u0000/g, function (m, i) { return linkHtml(links[+i]); });
+
     return formatted;
   }
 

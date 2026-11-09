@@ -1990,14 +1990,22 @@ function escHtml(s) {
 
 // Links in (already escaped) message text become clickable, like the
 // server-side |urlize. A trailing . , ! ? ) stays outside the link.
+// https://..., www... and bare domains (trypdeals.com/tours/...); not an
+// email address. Same rule as the website widget (widget/widget.js).
+const LINK_RE = /(^|[^@\w.\/])(https?:\/\/[^\s<]+|www\.[^\s<]+|[a-z0-9-]+(?:\.[a-z0-9-]+)*\.(?:com|in|org|net|co|io|travel|info)\b(?:\/[^\s<]*)?)/gi;
 function linkify(escaped) {
-  return String(escaped || '').replace(/\b(?:https?:\/\/|www\.)[^\s<]+/gi, m => {
+  return String(escaped || '').replace(LINK_RE, (all, before, m) => {
     const tail = (m.match(/[.,!?;:)\]]+$/) || [''])[0];
     const url = tail ? m.slice(0, -tail.length) : m;
-    const href = /^www\./i.test(url) ? 'https://' + url : url;
-    return `<a href="${href}" target="_blank" rel="noopener noreferrer">${url}</a>${tail}`;
+    const href = /^https?:\/\//i.test(url) ? url : 'https://' + url;
+    return `${before}<a href="${href}" target="_blank" rel="noopener noreferrer">${url}</a>${tail}`;
   });
 }
+
+// Messages from the server: |urlize misses bare .in domains etc.; link those too.
+document.querySelectorAll('.msg-text-content').forEach(el => {
+  if (!el.querySelector('a')) el.innerHTML = linkify(el.innerHTML);
+});
 
 // Message links open in a new tab, so the CRM stays open.
 document.addEventListener('click', e => {
