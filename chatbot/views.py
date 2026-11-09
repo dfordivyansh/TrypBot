@@ -856,11 +856,9 @@ def whatsapp_webhook(request):
         print("INCOMING NUMBER:",   incoming_display_number)
         print("EXPECTED PHONE ID:", settings.WHATSAPP_PHONE_NUMBER_ID)
 
-        # Ignore messages from other platform (772434515947390)
-        if incoming_phone_id == "772434515947390":
-            print(f"IGNORED — other platform: {incoming_display_number}")
-            return Response({"success": True, "ignored": True, "reason": "other_platform"})
-
+        # Only the CRM's own number (WHATSAPP_PHONE_NUMBER_ID in .env) is
+        # handled; Meta also sends the business account's other numbers here
+        # (e.g. one used on Cunnekt), and those are left to their platform.
         if incoming_phone_id != str(settings.WHATSAPP_PHONE_NUMBER_ID):
             print(f"IGNORED — different number: {incoming_display_number}")
             return Response({"success": True, "ignored": True, "reason": "different_phone_number"})
@@ -2647,7 +2645,7 @@ def widget_chat(request):
                 "message": "This conversation has been transferred to our travel expert. Continue chatting on WhatsApp for personalized assistance.",
                 "options": [],
                 "human_takeover": True,
-                "whatsapp_number": "918766247711"
+                "whatsapp_number": settings.WHATSAPP_DISPLAY_NUMBER
             }, status=200)
 
         # Save user message
