@@ -981,7 +981,9 @@ def _record_chat_message(campaign, rec, wamid):
             media_url=campaign.header_media_url if media_type else "",
             media_type=media_type or "",
             media_filename=campaign.header_media_filename if media_type == "document" else "",
-            raw_payload={"campaign_id": campaign.pk, "template": campaign.template_name},
+            raw_payload={"campaign_id": campaign.pk, "template": campaign.template_name,
+                         # shown under the message in the chat (Call Now ...)
+                         "buttons": (campaign.template.buttons if campaign.template_id and campaign.template else [])},
         )
         ChatSession.objects.filter(pk=rec.session_id).update(last_message=text[:1000])
     except Exception:

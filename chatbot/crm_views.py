@@ -876,6 +876,11 @@ WHATSAPP_ERROR_HINTS = {
 }
 
 
+def _template_payload(template):
+    """Saved on a sent template message, so the chat shows its buttons (Call Now ...)."""
+    return {"template": template.template_name, "buttons": template.buttons or []}
+
+
 def _whatsapp_number(raw):
     """Phone in WhatsApp format (country code + digits, no '+'), or None if invalid.
 
@@ -1545,6 +1550,7 @@ def crm_send_to_number(request):
             message=message,
             whatsapp_message_id=whatsapp_message_id,
             message_status="delivered",
+            raw_payload=_template_payload(template) if is_template else None,
         )
     except Exception as exc:
         traceback.print_exc()
@@ -2976,6 +2982,7 @@ def crm_send_template(request, session_id):
         message=template.template_text,
         whatsapp_message_id=whatsapp_message_id,
         message_status="sent",
+        raw_payload=_template_payload(template),
     )
 
     # Re-open the chat if it was closed

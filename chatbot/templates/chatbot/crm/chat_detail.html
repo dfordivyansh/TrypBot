@@ -82,6 +82,10 @@ html, body {
 .fs-backdrop { position: fixed; inset: 0; z-index: 75; background: rgba(0,0,0,.45); display: none; align-items: center; justify-content: center; padding: 16px; }
 .fs-backdrop.open { display: flex; }
 .msg-text-content a { color: #0369a1; text-decoration: underline; word-break: break-all; }
+.tpl-buttons { margin: 8px -12px 0; border-top: 1px solid rgba(0,0,0,.08); }
+.tpl-btn { display: flex; align-items: center; justify-content: center; gap: 6px; padding: 8px 12px; color: #00a5f4; font-size: 14px; font-weight: 600; text-decoration: none; }
+.tpl-btn + .tpl-btn { border-top: 1px solid rgba(0,0,0,.08); }
+a.tpl-btn:hover { background: rgba(0,165,244,.06); }
 .msg-text-content a:hover { color: #075985; }
 .rename-field { color: #111827 !important; background: #fff !important; caret-color: #111827; }
 .rename-field::placeholder { color: #9ca3af; opacity: 1; }
@@ -1115,6 +1119,21 @@ html, body {
             {% endif %}
           {% else %}
             <p class="text-sm text-gray-800 leading-relaxed whitespace-pre-wrap break-words msg-text-content">{{ msg.message|urlize }}</p>
+          {% endif %}
+
+          {% if msg.raw_payload.buttons %}
+          <!-- Template buttons, as the customer sees them on WhatsApp -->
+          <div class="tpl-buttons">
+            {% for b in msg.raw_payload.buttons %}
+              {% if b.type == "PHONE_NUMBER" and b.phone_number %}
+                <a href="tel:{{ b.phone_number }}" class="tpl-btn" title="{{ b.phone_number }}"><i class="fa-solid fa-phone"></i> {{ b.text }}</a>
+              {% elif b.type == "URL" and b.url|slice:":4" == "http" %}
+                <a href="{{ b.url }}" target="_blank" rel="noopener noreferrer" class="tpl-btn"><i class="fa-solid fa-arrow-up-right-from-square"></i> {{ b.text }}</a>
+              {% else %}
+                <span class="tpl-btn">{% if b.type == "PHONE_NUMBER" %}<i class="fa-solid fa-phone"></i>{% else %}<i class="fa-solid fa-reply"></i>{% endif %} {{ b.text }}</span>
+              {% endif %}
+            {% endfor %}
+          </div>
           {% endif %}
 
           <div class="flex items-center justify-end gap-1 mt-1">

@@ -801,6 +801,12 @@ class CRMTemplate(models.Model):
         default="en",
         help_text="Language code the template was approved in (e.g. en, en_US, hi)",
     )
+    buttons = models.JSONField(
+        default=list,
+        blank=True,
+        help_text='The template\'s buttons, shown under it in the CRM chat. Filled by '
+                  '"manage.py sync_template_buttons", e.g. [{"type": "PHONE_NUMBER", "text": "Call Now", "phone_number": "+91..."}]',
+    )
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
