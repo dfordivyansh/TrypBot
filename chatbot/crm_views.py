@@ -731,6 +731,12 @@ def _chat_timeline(messages, notes, reminders):
             by=(r.created_by.get_full_name() or r.created_by.username) if r.created_by else "",
         ))
     items.sort(key=lambda x: x.created_at)
+    # Mark the first item of each calendar day so the template can show a date divider.
+    prev_date = None
+    for item in items:
+        d = item.created_at.date()
+        item.show_date_divider = (d != prev_date)
+        prev_date = d
     return items
 
 
@@ -778,7 +784,7 @@ def crm_chat_detail(request, session_id):
     session.unread_count = 0
     session.save(update_fields=["unread_count"])
 
-    messages  = list(ChatMessage.objects.filter(session=session).order_by("created_at"))
+    messages  = list(ChatMessage.objects.filter(session=session).select_related("sent_by").order_by("created_at"))
     _attach_fail_reasons(session, messages)
     notes     = InternalNote.objects.filter(session=session).select_related("added_by").order_by("-created_at")
     reminders = Reminder.objects.filter(session=session).select_related("created_by").order_by("reminder_at")
@@ -1051,6 +1057,7 @@ def crm_send_message(request, session_id):
         message=text,
         whatsapp_message_id=whatsapp_message_id,
         message_status="sent",
+        sent_by=request.user,
     )
     session.last_message = text
     session.updated_at   = timezone.now()
@@ -1130,6 +1137,7 @@ def crm_send_file(request, session_id):
         media_type=media_type,
         media_mime_type=mime,
         media_filename=uploaded.name,
+        sent_by=request.user,
     )
 
     sent_ok    = False
@@ -1551,6 +1559,7 @@ def crm_send_to_number(request):
             whatsapp_message_id=whatsapp_message_id,
             message_status="delivered",
             raw_payload=_template_payload(template) if is_template else None,
+            sent_by=request.user,
         )
     except Exception as exc:
         traceback.print_exc()
@@ -1900,6 +1909,19 @@ def crm_add_reminder(request):
         created_by=request.user,
     )
 
+    # Notify the assigned agent (skip if they set their own reminder)
+    assigned = session.assigned_sales_person
+    if assigned and assigned != request.user:
+        from .push import notify_user
+        name = request.user.get_full_name() or request.user.username
+        notify_user(
+            assigned,
+            f"Reminder: {name}",
+            note_text[:160] or "A reminder was set on your chat",
+            f"/crm/chat/{session.id}/",
+            tag=f"reminder-{reminder.id}",
+        )
+
     return JsonResponse({
         "success": True,
         "reminder": {
@@ -2231,11 +2253,13 @@ def crm_live_messages(request, session_id):
     ).order_by("created_at")
 
     data = []
-    for m in messages:
+    for m in messages.select_related("sent_by"):
         if m.sender_type == "bot":
             sender_name = "TrypBot AI"
         elif m.sender_type in ("sales", "agent"):
-            if session.assigned_sales_person:
+            if m.sent_by:
+                sender_name = m.sent_by.get_full_name() or m.sent_by.username
+            elif session.assigned_sales_person:
                 sender_name = (
                     session.assigned_sales_person.get_full_name()
                     or session.assigned_sales_person.username
@@ -2983,6 +3007,7 @@ def crm_send_template(request, session_id):
         whatsapp_message_id=whatsapp_message_id,
         message_status="sent",
         raw_payload=_template_payload(template),
+        sent_by=request.user,
     )
 
     # Re-open the chat if it was closed
@@ -3535,8 +3560,47 @@ def crm_export_leads_analysis(request):
 # sync/toggle controls render and work. Swap this out later for
 # request.user.salesprofile.role once login is wired up.
 # ======================================================
- 
+
 def _get_user_role(request):
     return "admin"
+
+
+# =========================================================
+# NOTIFICATION SETTINGS PAGE
+# =========================================================
+
+@crm_login_required
+def crm_notification_settings(request):
+    from .push_views import _firebase_context
+    ctx = _firebase_context()
+    return render(request, "chatbot/crm/notification_settings.html", {
+        "push_enabled": ctx["enabled"],
+        "config_json":  ctx["config_json"],
+        "vapid_key":    ctx["vapid_key"],
+    })
+
+
+@crm_login_required
+def crm_push_devices(request):
+    """GET: list this user's registered devices. DELETE: remove one by token."""
+    from .models import PushDevice
+    if request.method == "GET":
+        devices = list(
+            PushDevice.objects.filter(user=request.user)
+            .order_by("-id")
+            .values("token", "user_agent", "created_at")
+        )
+        for d in devices:
+            d["created_at"] = d["created_at"].strftime("%d %b %Y, %I:%M %p") if d["created_at"] else ""
+        return JsonResponse({"devices": devices})
+    if request.method == "DELETE":
+        try:
+            token = json.loads(request.body).get("token", "")
+        except Exception:
+            token = ""
+        if token:
+            PushDevice.objects.filter(user=request.user, token=token).delete()
+        return JsonResponse({"success": True})
+    return JsonResponse({"error": "Method not allowed"}, status=405)
  
  

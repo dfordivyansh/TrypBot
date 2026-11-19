@@ -356,4 +356,10 @@ urlpatterns = [
     # --------------------------------------------------
     path("calls/", call_routing.crm_calls, name="crm_calls"),
     path("calls/<int:call_id>/customer/", call_routing.crm_call_customer, name="crm_call_customer"),
+
+    # --------------------------------------------------
+    # NOTIFICATION SETTINGS
+    # --------------------------------------------------
+    path("notifications/", crm_views.crm_notification_settings, name="crm_notification_settings"),
+    path("notifications/devices/", crm_views.crm_push_devices, name="crm_push_devices"),
 ]

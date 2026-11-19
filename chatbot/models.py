@@ -162,6 +162,16 @@ class ChatMessage(models.Model):
 
     raw_payload = models.JSONField(blank=True, null=True)
 
+    # Agent who sent this message (sales/agent type only). Stored at send time
+    # so history stays correct even after the chat is reassigned.
+    sent_by = models.ForeignKey(
+        "auth.User",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="sent_messages",
+    )
+
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

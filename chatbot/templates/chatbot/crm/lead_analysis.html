@@ -21,91 +21,106 @@
     {% endif %}
   </div>
 
-  <!-- Filters -->
-  <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-4 mb-6">
-    <form method="GET" class="grid grid-cols-1 md:grid-cols-5 gap-4">
-      <!-- Label Filter -->
-      <div>
-        <label class="block text-sm font-medium text-gray-700 mb-1">Label</label>
-        <select name="label" class="w-full rounded-md border-gray-300 shadow-sm focus:border-brand focus:ring focus:ring-brand focus:ring-opacity-50">
-          <option value="">All Labels</option>
-          {% for label in labels %}
-            <option value="{{ label.name }}" {% if label_filter == label.name %}selected{% endif %}>
-              {{ label.name }}
-            </option>
-          {% endfor %}
-          <option value="__none__" {% if label_filter == "__none__" %}selected{% endif %}>No Label</option>
-        </select>
-      </div>
-
-      <!-- Sales Person Filter -->
-      <div>
-        <label class="block text-sm font-medium text-gray-700 mb-1">Sales Person</label>
-        {% if can_pick_person %}
-        <select name="sales_person" class="w-full rounded-md border-gray-300 shadow-sm focus:border-brand focus:ring focus:ring-brand focus:ring-opacity-50">
-          <option value="">{% if is_admin %}All Sales Persons{% else %}My Team{% endif %}</option>
-          {% if is_admin %}<option value="none" {% if sales_person_filter == "none" %}selected{% endif %}>Not Assigned</option>{% endif %}
-          {% for sp in sales_persons %}
-            <option value="{{ sp.id }}" {% if sales_person_filter == sp.id|stringformat:"s" %}selected{% endif %}>
-              {{ sp.get_full_name|default:sp.username }}
-            </option>
-          {% endfor %}
-        </select>
-        {% else %}
-        <select name="sales_person" disabled class="w-full rounded-md border-gray-300 bg-gray-100 shadow-sm focus:border-brand focus:ring focus:ring-brand focus:ring-opacity-50 cursor-not-allowed">
-          {% for sp in sales_persons %}
-            <option value="{{ sp.id }}" selected>
-              {{ sp.get_full_name|default:sp.username }}
-            </option>
-          {% endfor %}
-        </select>
-        <input type="hidden" name="sales_person" value="{{ request.user.id }}">
-        {% endif %}
-      </div>
-
-      <!-- Status Filter -->
-      <div>
-        <label class="block text-sm font-medium text-gray-700 mb-1">Status</label>
-        <select name="status" class="w-full rounded-md border-gray-300 shadow-sm focus:border-brand focus:ring focus:ring-brand focus:ring-opacity-50">
-          <option value="">All Status</option>
-          <option value="active" {% if status_filter == "active" %}selected{% endif %}>Active (24h)</option>
-          <option value="inactive" {% if status_filter == "inactive" %}selected{% endif %}>Inactive (>24h)</option>
-        </select>
-      </div>
-
-      <!-- Source Filter -->
-      <div>
-        <label class="block text-sm font-medium text-gray-700 mb-1">Source</label>
-        <select name="source" class="w-full rounded-md border-gray-300 shadow-sm focus:border-brand focus:ring focus:ring-brand focus:ring-opacity-50">
-          <option value="">All Sources</option>
-          <option value="website" {% if source_filter == "website" %}selected{% endif %}>Website</option>
-          <option value="whatsapp" {% if source_filter == "whatsapp" %}selected{% endif %}>WhatsApp/Meta</option>
-        </select>
-      </div>
-
-      <!-- Date From -->
-      <div>
-        <label class="block text-sm font-medium text-gray-700 mb-1">Date From</label>
-        <input type="date" name="date_from" value="{{ date_from }}" class="w-full rounded-md border-gray-300 shadow-sm focus:border-brand focus:ring focus:ring-brand focus:ring-opacity-50">
-      </div>
-
-      <!-- Date To -->
-      <div>
-        <label class="block text-sm font-medium text-gray-700 mb-1">Date To</label>
-        <input type="date" name="date_to" value="{{ date_to }}" class="w-full rounded-md border-gray-300 shadow-sm focus:border-brand focus:ring focus:ring-brand focus:ring-opacity-50">
-      </div>
-
-      <!-- Submit Button -->
-      <div class="md:col-span-5 flex gap-2">
-        <button type="submit" class="bg-brand hover:bg-brand-dark text-white font-medium px-4 py-2 rounded-md transition-colors">
-          Apply Filters
-        </button>
-        <a href="{% url 'crm_lead_analysis' %}" class="bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium px-4 py-2 rounded-md transition-colors">
-          Clear
-        </a>
-      </div>
-    </form>
+  <!-- Quick label chips (mobile: horizontal scroll) -->
+  <div class="flex gap-2 overflow-x-auto pb-1 mb-3 -mx-3 px-3 md:hidden" style="scrollbar-width:none">
+    <a href="?{% if sales_person_filter %}sales_person={{ sales_person_filter }}&{% endif %}{% if status_filter %}status={{ status_filter }}&{% endif %}{% if date_from %}date_from={{ date_from }}&{% endif %}{% if date_to %}date_to={{ date_to }}&{% endif %}"
+       class="flex-shrink-0 px-3 py-1 rounded-full text-xs font-medium border transition-colors {% if not label_filter %}bg-brand text-white border-brand{% else %}bg-white text-gray-600 border-gray-300{% endif %}">
+      All
+    </a>
+    {% for lbl in labels %}
+    <a href="?label={{ lbl.name|urlencode }}{% if sales_person_filter %}&sales_person={{ sales_person_filter }}{% endif %}{% if status_filter %}&status={{ status_filter }}{% endif %}{% if date_from %}&date_from={{ date_from }}{% endif %}{% if date_to %}&date_to={{ date_to }}{% endif %}"
+       class="flex-shrink-0 px-3 py-1 rounded-full text-xs font-medium border transition-colors {% if label_filter == lbl.name %}text-white{% else %}bg-white{% endif %}"
+       style="{% if label_filter == lbl.name %}background:{{ lbl.color }};border-color:{{ lbl.color }};{% else %}color:{{ lbl.color }};border-color:{{ lbl.color }};{% endif %}">
+      {{ lbl.name }}
+    </a>
+    {% endfor %}
   </div>
+
+  <!-- Filters (collapsible on mobile, always open on desktop) -->
+  <details class="bg-white rounded-lg shadow-sm border border-gray-200 mb-4 group" {% if label_filter or sales_person_filter or status_filter or date_from or date_to or source_filter %}open{% endif %}>
+    <summary class="flex items-center justify-between p-3 cursor-pointer select-none">
+      <span class="flex items-center gap-2 text-sm font-medium text-gray-700">
+        <i class="fa-solid fa-sliders text-gray-500"></i>
+        Filters
+        {% if label_filter or sales_person_filter or status_filter or date_from or date_to or source_filter %}
+          <span class="bg-brand text-white text-xs px-1.5 py-0.5 rounded-full">On</span>
+        {% endif %}
+      </span>
+      <i class="fa-solid fa-chevron-down text-gray-400 text-xs group-open:rotate-180 transition-transform"></i>
+    </summary>
+    <div class="p-3 pt-0 border-t border-gray-100">
+      <form method="GET" class="grid grid-cols-2 md:grid-cols-6 gap-3">
+        <!-- Label -->
+        <div>
+          <label class="block text-xs font-medium text-gray-600 mb-1">Label</label>
+          <select name="label" class="w-full text-sm rounded-md border-gray-300 shadow-sm focus:border-brand focus:ring focus:ring-brand focus:ring-opacity-50">
+            <option value="">All</option>
+            {% for lbl in labels %}
+              <option value="{{ lbl.name }}" {% if label_filter == lbl.name %}selected{% endif %}>{{ lbl.name }}</option>
+            {% endfor %}
+            <option value="__none__" {% if label_filter == "__none__" %}selected{% endif %}>No Label</option>
+          </select>
+        </div>
+        <!-- Sales Person -->
+        <div>
+          <label class="block text-xs font-medium text-gray-600 mb-1">Sales Person</label>
+          {% if can_pick_person %}
+          <select name="sales_person" class="w-full text-sm rounded-md border-gray-300 shadow-sm focus:border-brand focus:ring focus:ring-brand focus:ring-opacity-50">
+            <option value="">{% if is_admin %}All{% else %}My Team{% endif %}</option>
+            {% if is_admin %}<option value="none" {% if sales_person_filter == "none" %}selected{% endif %}>Unassigned</option>{% endif %}
+            {% for sp in sales_persons %}
+              <option value="{{ sp.id }}" {% if sales_person_filter == sp.id|stringformat:"s" %}selected{% endif %}>
+                {{ sp.get_full_name|default:sp.username }}
+              </option>
+            {% endfor %}
+          </select>
+          {% else %}
+          <select name="sales_person" disabled class="w-full text-sm rounded-md border-gray-300 bg-gray-100 shadow-sm cursor-not-allowed">
+            {% for sp in sales_persons %}<option value="{{ sp.id }}" selected>{{ sp.get_full_name|default:sp.username }}</option>{% endfor %}
+          </select>
+          <input type="hidden" name="sales_person" value="{{ request.user.id }}">
+          {% endif %}
+        </div>
+        <!-- Status -->
+        <div>
+          <label class="block text-xs font-medium text-gray-600 mb-1">Status</label>
+          <select name="status" class="w-full text-sm rounded-md border-gray-300 shadow-sm focus:border-brand focus:ring focus:ring-brand focus:ring-opacity-50">
+            <option value="">All</option>
+            <option value="active" {% if status_filter == "active" %}selected{% endif %}>Active (24h)</option>
+            <option value="inactive" {% if status_filter == "inactive" %}selected{% endif %}>Inactive</option>
+          </select>
+        </div>
+        <!-- Source -->
+        <div>
+          <label class="block text-xs font-medium text-gray-600 mb-1">Source</label>
+          <select name="source" class="w-full text-sm rounded-md border-gray-300 shadow-sm focus:border-brand focus:ring focus:ring-brand focus:ring-opacity-50">
+            <option value="">All</option>
+            <option value="website" {% if source_filter == "website" %}selected{% endif %}>Website</option>
+            <option value="whatsapp" {% if source_filter == "whatsapp" %}selected{% endif %}>WhatsApp</option>
+          </select>
+        </div>
+        <!-- Date From -->
+        <div>
+          <label class="block text-xs font-medium text-gray-600 mb-1">From</label>
+          <input type="date" name="date_from" value="{{ date_from }}" class="w-full text-sm rounded-md border-gray-300 shadow-sm focus:border-brand focus:ring focus:ring-brand focus:ring-opacity-50">
+        </div>
+        <!-- Date To -->
+        <div>
+          <label class="block text-xs font-medium text-gray-600 mb-1">To</label>
+          <input type="date" name="date_to" value="{{ date_to }}" class="w-full text-sm rounded-md border-gray-300 shadow-sm focus:border-brand focus:ring focus:ring-brand focus:ring-opacity-50">
+        </div>
+        <!-- Buttons -->
+        <div class="col-span-2 md:col-span-6 flex gap-2 pt-1">
+          <button type="submit" class="bg-brand hover:bg-brand-dark text-white text-sm font-medium px-4 py-2 rounded-md transition-colors">
+            Apply
+          </button>
+          <a href="{% url 'crm_lead_analysis' %}" class="bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm font-medium px-4 py-2 rounded-md transition-colors">
+            Clear
+          </a>
+        </div>
+      </form>
+    </div>
+  </details>
 
   <!-- Statistics Cards: admin all, team leader their team, sales person their own -->
   {% if True %}
@@ -225,8 +240,63 @@
   </div>
   <!-- END DAY-WISE CARD -->
 
-  <!-- Leads Table -->
-  <div class="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+  <!-- ══════════════════════════════════════════
+       LEADS — MOBILE CARD VIEW (hidden on md+)
+  ══════════════════════════════════════════ -->
+  <div class="md:hidden space-y-2 mb-4">
+    {% for item in leads %}
+      {% with session=item.session label=item.label assigned_to=item.assigned_to closed=item.closed is_active=item.is_active hours=item.hours_since_activity %}
+      <a href="{% url 'crm_chat_detail' session.id %}" class="block bg-white rounded-xl border border-gray-200 p-3 shadow-sm active:bg-gray-50">
+        <!-- Row 1: name + status badge -->
+        <div class="flex items-start justify-between gap-2 mb-1.5">
+          <div class="min-w-0">
+            <div class="font-semibold text-gray-900 text-sm truncate">
+              {{ session.user_name|default:session.phone_number|default:"Unknown" }}
+            </div>
+            <div class="text-xs text-gray-500">{{ session.phone_number|default:"" }}</div>
+          </div>
+          {% if closed %}
+            <span class="flex-shrink-0 px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700">Closed</span>
+          {% elif is_active %}
+            <span class="flex-shrink-0 px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700">Active</span>
+          {% else %}
+            <span class="flex-shrink-0 px-2 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-700">Inactive</span>
+          {% endif %}
+        </div>
+        <!-- Row 2: label + assigned -->
+        <div class="flex items-center gap-2 flex-wrap mb-1.5">
+          {% if label %}
+            <span class="px-2 py-0.5 rounded-full text-xs font-medium" style="background:{{ label.color }}20;color:{{ label.color }};border:1px solid {{ label.color }}40">
+              {{ label.name }}
+            </span>
+          {% else %}
+            <span class="text-xs text-gray-400">No Label</span>
+          {% endif %}
+          <span class="text-xs text-gray-500">
+            <i class="fa-solid fa-user text-gray-400 mr-0.5"></i>
+            {% if assigned_to %}{{ assigned_to.get_full_name|default:assigned_to.username }}
+            {% elif session.assigned_sales_person %}{{ session.assigned_sales_person.get_full_name|default:session.assigned_sales_person.username }}
+            {% else %}Unassigned{% endif %}
+          </span>
+        </div>
+        <!-- Row 3: last activity -->
+        <div class="flex items-center justify-between text-xs text-gray-400">
+          <span><i class="fa-regular fa-clock mr-0.5"></i>Last activity {{ hours|floatformat:0 }}h ago</span>
+          <span>{{ session.updated_at|date:"d M, H:i" }}</span>
+        </div>
+      </a>
+      {% endwith %}
+    {% empty %}
+      <div class="bg-white rounded-xl border border-gray-200 p-8 text-center text-gray-500 text-sm">
+        No leads found.
+      </div>
+    {% endfor %}
+  </div>
+
+  <!-- ══════════════════════════════════════════
+       LEADS — DESKTOP TABLE VIEW (hidden on mobile)
+  ══════════════════════════════════════════ -->
+  <div class="hidden md:block bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
     <div class="overflow-x-auto">
       <table class="min-w-full divide-y divide-gray-200">
         <thead class="bg-gray-50">
@@ -237,8 +307,8 @@
             <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Sales Person</th>
             <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Created</th>
             <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Last Activity</th>
-            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">24h Status</th>
-            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Action</th>
           </tr>
         </thead>
         <tbody class="bg-white divide-y divide-gray-200">
@@ -246,104 +316,74 @@
             {% with session=item.session label=item.label assigned_to=item.assigned_to closed=item.closed is_active=item.is_active hours=item.hours_since_activity %}
             <tr class="hover:bg-gray-50">
               <td class="px-6 py-4 whitespace-nowrap">
-                <div class="text-sm font-medium text-gray-900">
-                  {{ session.user_name|default:session.phone_number|default:"Unknown" }}
-                </div>
+                <div class="text-sm font-medium text-gray-900">{{ session.user_name|default:session.phone_number|default:"Unknown" }}</div>
                 <div class="text-xs text-gray-500">{{ session.id }}</div>
               </td>
-              <td class="px-3 py-4 whitespace-nowrap text-sm text-gray-900">
-                {{ session.phone_number|default:"-" }}
-              </td>
+              <td class="px-3 py-4 whitespace-nowrap text-sm text-gray-900">{{ session.phone_number|default:"-" }}</td>
               <td class="px-6 py-4 whitespace-nowrap">
                 {% if label %}
-                  <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium" style="background-color: {{ label.color }}20; color: {{ label.color }}">
-                    {{ label.name }}
-                  </span>
+                  <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium" style="background-color:{{ label.color }}20;color:{{ label.color }}">{{ label.name }}</span>
                 {% else %}
                   <span class="text-gray-400 text-sm">-</span>
                 {% endif %}
               </td>
               <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                {% if assigned_to %}
-                  {{ assigned_to.get_full_name|default:assigned_to.username }}
-                {% elif session.assigned_sales_person %}
-                  {{ session.assigned_sales_person.get_full_name|default:session.assigned_sales_person.username }}
-                {% else %}
-                  <span class="text-gray-400">Not Assigned</span>
-                {% endif %}
+                {% if assigned_to %}{{ assigned_to.get_full_name|default:assigned_to.username }}
+                {% elif session.assigned_sales_person %}{{ session.assigned_sales_person.get_full_name|default:session.assigned_sales_person.username }}
+                {% else %}<span class="text-gray-400">Not Assigned</span>{% endif %}
               </td>
-              <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                {{ session.created_at|date:"M d, Y H:i" }}
-              </td>
+              <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{{ session.created_at|date:"M d, Y H:i" }}</td>
               <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                 {{ session.updated_at|date:"M d, Y H:i" }}
+                <div class="text-xs text-gray-400">{{ hours|floatformat:1 }}h ago</div>
               </td>
               <td class="px-6 py-4 whitespace-nowrap">
                 {% if closed %}
-                  <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
-                    Closed
-                  </span>
+                  <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">Closed</span>
                 {% elif is_active %}
-                  <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                    Active
-                  </span>
+                  <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">Active</span>
                 {% else %}
-                  <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
-                    Inactive
-                  </span>
+                  <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">Inactive</span>
                 {% endif %}
-                <div class="text-xs text-gray-400 mt-1">
-                  {{ hours|floatformat:1 }}h ago
-                </div>
               </td>
               <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                <a href="{% url 'crm_chat_detail' session.id %}" class="text-brand hover:text-brand-dark">
-                  View Chat
-                </a>
+                <a href="{% url 'crm_chat_detail' session.id %}" class="text-brand hover:text-brand-dark">View Chat</a>
               </td>
             </tr>
             {% endwith %}
           {% empty %}
             <tr>
-              <td colspan="8" class="px-6 py-12 text-center text-gray-500">
-                No leads found matching your filters.
-              </td>
+              <td colspan="8" class="px-6 py-12 text-center text-gray-500">No leads found matching your filters.</td>
             </tr>
           {% endfor %}
         </tbody>
       </table>
     </div>
-
-    <!-- Pagination -->
-    {% if leads.has_other_pages %}
-    <div class="bg-gray-50 px-6 py-4 border-t border-gray-200">
-      <div class="flex items-center justify-between">
-        <div class="text-sm text-gray-700">
-          Showing {{ leads.start_index }} to {{ leads.end_index }} of {{ leads.paginator.count }} leads
-        </div>
-        <div class="flex gap-2">
-          {% if leads.has_previous %}
-            <a href="?page={{ leads.previous_page_number }}{% if page_qs %}&{{ page_qs }}{% endif %}"
-               class="px-3 py-1 bg-white border border-gray-300 rounded-md text-sm text-gray-700 hover:bg-gray-50">
-              Previous
-            </a>
-          {% endif %}
-          
-          <span class="px-3 py-1 text-sm text-gray-700">
-            Page {{ leads.number }} of {{ leads.paginator.num_pages }}
-          </span>
-          
-          {% if leads.has_next %}
-            <a href="?page={{ leads.next_page_number }}{% if page_qs %}&{{ page_qs }}{% endif %}"
-               class="px-3 py-1 bg-white border border-gray-300 rounded-md text-sm text-gray-700 hover:bg-gray-50">
-              Next
-            </a>
-          {% endif %}
-        </div>
-      </div>
-    </div>
-    {% endif %}
   </div>
+
+  <!-- Pagination (both views) -->
+  {% if leads.has_other_pages %}
+  <div class="bg-white rounded-lg border border-gray-200 px-4 py-3 mt-2 flex items-center justify-between">
+    <div class="text-xs text-gray-600">
+      {{ leads.start_index }}–{{ leads.end_index }} of {{ leads.paginator.count }}
+    </div>
+    <div class="flex gap-2">
+      {% if leads.has_previous %}
+        <a href="?page={{ leads.previous_page_number }}{% if page_qs %}&{{ page_qs }}{% endif %}"
+           class="px-3 py-1 bg-white border border-gray-300 rounded-md text-sm text-gray-700 hover:bg-gray-50">
+          &larr; Prev
+        </a>
+      {% endif %}
+      <span class="px-3 py-1 text-sm text-gray-600">{{ leads.number }} / {{ leads.paginator.num_pages }}</span>
+      {% if leads.has_next %}
+        <a href="?page={{ leads.next_page_number }}{% if page_qs %}&{{ page_qs }}{% endif %}"
+           class="px-3 py-1 bg-white border border-gray-300 rounded-md text-sm text-gray-700 hover:bg-gray-50">
+          Next &rarr;
+        </a>
+      {% endif %}
+    </div>
+  </div>
+  {% endif %}
 </div>
 {% endblock %}
 

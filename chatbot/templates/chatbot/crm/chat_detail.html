@@ -999,7 +999,7 @@ a.tpl-btn:hover { background: rgba(0,165,244,.06); }
 
     {% for msg in messages %}
 
-    {% if forloop.first %}
+    {% if msg.show_date_divider %}
     <div class="flex justify-center my-3">
       <span class="bg-[#e0f2f1]/80 text-[#00695c] text-[11px] px-3 py-1 rounded-full shadow-sm font-medium">
         {{ msg.created_at|date:"d F Y" }}
@@ -1062,7 +1062,7 @@ a.tpl-btn:hover { background: rgba(0,165,244,.06); }
             <p class="text-sm text-gray-800 leading-relaxed whitespace-pre-wrap break-words msg-text-content">{{ msg.message|urlize }}</p>
           {% endif %}
 
-          <div class="text-[10px] text-gray-400 mt-1 text-right">{{ msg.created_at|date:"h:i A" }}</div>
+          <div class="text-[10px] text-gray-400 mt-1 text-right" title="{{ msg.created_at|date:'d M Y, h:i A' }}">{{ msg.created_at|date:"h:i A" }}</div>
         </div>
 
         <!-- Copy button — appears to the right of incoming bubble -->
@@ -1088,6 +1088,10 @@ a.tpl-btn:hover { background: rgba(0,165,244,.06); }
           </svg>
           {% if msg.sender_type == 'bot' %}
           <div class="text-[10px] text-[#128C7E] font-semibold mb-0.5">🤖 TrypBot AI</div>
+          {% elif msg.sent_by %}
+          <div class="text-[10px] text-[#128C7E] font-semibold mb-0.5">
+            {{ msg.sent_by.get_full_name|default:msg.sent_by.username }}
+          </div>
           {% elif active_session.assigned_sales_person %}
           <div class="text-[10px] text-[#128C7E] font-semibold mb-0.5">
             {{ active_session.assigned_sales_person.get_full_name|default:active_session.assigned_sales_person.username }}
@@ -1137,7 +1141,7 @@ a.tpl-btn:hover { background: rgba(0,165,244,.06); }
           {% endif %}
 
           <div class="flex items-center justify-end gap-1 mt-1">
-            <span class="text-[10px] text-gray-500">{{ msg.created_at|date:"h:i A" }}</span>
+            <span class="text-[10px] text-gray-500" title="{{ msg.created_at|date:'d M Y, h:i A' }}">{{ msg.created_at|date:"h:i A" }}</span>
             <span class="msg-status text-xs leading-none" data-status="{{ msg.message_status|default:'sent' }}">
               {% if msg.message_status == 'sent' %}
                 <i class="fa-solid fa-check text-gray-400"></i>

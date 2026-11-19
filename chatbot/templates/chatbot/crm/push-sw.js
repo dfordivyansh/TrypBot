@@ -30,6 +30,8 @@ self.addEventListener("push", (event) => {
   const n = readPush(event);
   event.waitUntil(self.registration.showNotification(n.title, {
     body: n.body,
+    icon: "/static/crm/icon-192.png",
+    badge: "/static/crm/badge-72.png",
     tag: n.tag,
     renotify: !!n.tag,
     timestamp: Date.now(),

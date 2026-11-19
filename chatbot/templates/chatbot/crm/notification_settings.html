@@ -1,0 +1,220 @@
+{% extends "chatbot/crm/base.html" %}
+
+{% block title %}Notification Settings — TrypBot CRM{% endblock %}
+
+{% block content %}
+<div class="max-w-lg mx-auto p-4 sm:p-6">
+
+  <h1 class="text-xl font-bold text-gray-900 mb-1">Notification Settings</h1>
+  <p class="text-sm text-gray-500 mb-6">Get notified on this device for new leads, messages, and reminders.</p>
+
+  <!-- Status card -->
+  <div class="bg-white rounded-xl border border-gray-200 shadow-sm p-5 mb-4">
+    <div class="flex items-center gap-4">
+      <div id="notifIconWrap" class="w-12 h-12 rounded-full flex items-center justify-center flex-shrink-0 bg-gray-100">
+        <i id="notifIcon" class="fa-solid fa-bell-slash text-2xl text-gray-400"></i>
+      </div>
+      <div class="flex-1 min-w-0">
+        <div class="font-semibold text-gray-900 text-sm" id="notifStatusTitle">Checking…</div>
+        <div class="text-xs text-gray-500 mt-0.5" id="notifStatusDesc"></div>
+      </div>
+    </div>
+
+    <!-- Action buttons -->
+    <div class="mt-4 flex flex-col gap-2" id="notifActions"></div>
+  </div>
+
+  <!-- What you'll get notified about -->
+  <div class="bg-white rounded-xl border border-gray-200 shadow-sm p-5 mb-4">
+    <h2 class="font-semibold text-gray-900 text-sm mb-3">You will be notified when:</h2>
+    <ul class="space-y-3 text-sm text-gray-700">
+      <li class="flex items-center gap-3">
+        <span class="w-7 h-7 rounded-full bg-green-100 flex items-center justify-center flex-shrink-0">
+          <i class="fa-solid fa-user-plus text-green-600 text-xs"></i>
+        </span>
+        A new lead is assigned to you
+      </li>
+      <li class="flex items-center gap-3">
+        <span class="w-7 h-7 rounded-full bg-blue-100 flex items-center justify-center flex-shrink-0">
+          <i class="fa-solid fa-comment text-blue-600 text-xs"></i>
+        </span>
+        Your assigned customer sends a message
+      </li>
+      <li class="flex items-center gap-3">
+        <span class="w-7 h-7 rounded-full bg-orange-100 flex items-center justify-center flex-shrink-0">
+          <i class="fa-solid fa-bell text-orange-600 text-xs"></i>
+        </span>
+        A reminder is set on one of your chats
+      </li>
+    </ul>
+  </div>
+
+  <!-- Registered devices -->
+  <div class="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
+    <h2 class="font-semibold text-gray-900 text-sm mb-3">Registered devices</h2>
+    <div id="deviceList" class="text-sm text-gray-500">Loading…</div>
+  </div>
+
+</div>
+
+{% endblock %}
+
+{% block extra_scripts %}
+<script type="module">
+{% if push_enabled %}
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import { getMessaging, getToken, isSupported } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-messaging.js";
+
+const CONFIG   = {{ config_json|safe }};
+const VAPID    = "{{ vapid_key|escapejs }}";
+const SW_URL   = "{% url 'crm_push_sw' %}";
+const REG_URL  = "{% url 'crm_push_register' %}";
+const DEV_URL  = "{% url 'crm_push_devices' %}";
+const SENT_KEY = "trypbot-push-token";
+
+function csrf() {
+  return document.querySelector('meta[name="csrf-token"]')?.content || "";
+}
+
+async function registerToken() {
+  const reg = await navigator.serviceWorker.register(SW_URL, { scope: "/crm/" });
+  const messaging = getMessaging(initializeApp(CONFIG));
+  const token = await getToken(messaging, { vapidKey: VAPID, serviceWorkerRegistration: reg });
+  if (!token) throw new Error("No token returned");
+  await fetch(REG_URL, {
+    method: "POST", credentials: "same-origin",
+    headers: { "Content-Type": "application/json", "X-CSRFToken": csrf() },
+    body: JSON.stringify({ token }),
+  });
+  localStorage.setItem(SENT_KEY, JSON.stringify({ token, at: Date.now() }));
+  return token;
+}
+
+async function removeDevice(token) {
+  await fetch(DEV_URL, {
+    method: "DELETE", credentials: "same-origin",
+    headers: { "Content-Type": "application/json", "X-CSRFToken": csrf() },
+    body: JSON.stringify({ token }),
+  });
+}
+
+async function loadDevices() {
+  const wrap = document.getElementById("deviceList");
+  try {
+    const res = await fetch(DEV_URL, { credentials: "same-origin" });
+    const data = await res.json();
+    if (!data.devices || data.devices.length === 0) {
+      wrap.innerHTML = '<span class="text-gray-400 italic">No devices registered yet.</span>';
+      return;
+    }
+    const stored = (() => { try { return JSON.parse(localStorage.getItem(SENT_KEY) || "{}").token; } catch(e) { return null; } })();
+    wrap.innerHTML = data.devices.map(d => `
+      <div class="flex items-center justify-between gap-2 py-2 border-b border-gray-100 last:border-0">
+        <div class="min-w-0">
+          <div class="text-xs font-medium text-gray-800 truncate">
+            ${d.token === stored ? '<span class="text-green-600 font-semibold">This device</span>' : 'Other device'}
+          </div>
+          <div class="text-xs text-gray-400 truncate">${d.user_agent || ''}</div>
+          <div class="text-xs text-gray-400">${d.created_at || ''}</div>
+        </div>
+        <button onclick="removeThisDevice('${d.token.replace(/'/g,"\\'")}', this)"
+                class="flex-shrink-0 text-xs text-red-500 hover:text-red-700 px-2 py-1 rounded border border-red-200 hover:bg-red-50 transition-colors">
+          Remove
+        </button>
+      </div>
+    `).join('');
+  } catch(e) {
+    wrap.innerHTML = '<span class="text-red-500 text-xs">Could not load devices.</span>';
+  }
+}
+
+window.removeThisDevice = async function(token, btn) {
+  btn.disabled = true; btn.textContent = '…';
+  await removeDevice(token);
+  const stored = (() => { try { return JSON.parse(localStorage.getItem(SENT_KEY) || "{}").token; } catch(e) { return null; } })();
+  if (token === stored) localStorage.removeItem(SENT_KEY);
+  await loadDevices();
+  renderStatus();
+};
+
+async function renderStatus() {
+  const title = document.getElementById("notifStatusTitle");
+  const desc  = document.getElementById("notifStatusDesc");
+  const icon  = document.getElementById("notifIcon");
+  const wrap  = document.getElementById("notifIconWrap");
+  const acts  = document.getElementById("notifActions");
+  const sidebarIcon = document.getElementById("sidebarNotifIcon");
+
+  const supported = await isSupported().catch(() => false);
+  if (!supported || !("Notification" in window)) {
+    title.textContent = "Not supported on this browser";
+    desc.textContent  = "Use Chrome or Edge on Android/desktop for push notifications.";
+    acts.innerHTML = "";
+    return;
+  }
+
+  const perm = Notification.permission;
+
+  if (perm === "granted") {
+    icon.className = "fa-solid fa-bell text-2xl text-green-500";
+    wrap.className = wrap.className.replace("bg-gray-100", "bg-green-100");
+    title.textContent = "Notifications enabled";
+    desc.textContent  = "This device will receive notifications.";
+    if (sidebarIcon) sidebarIcon.className = "fa-solid fa-bell text-lg";
+    acts.innerHTML = `
+      <button onclick="testNotif()" class="w-full text-sm bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium px-4 py-2.5 rounded-lg transition-colors">
+        <i class="fa-solid fa-paper-plane mr-2"></i>Send test notification
+      </button>
+      <p class="text-xs text-gray-400 text-center">To disable, use browser site settings → Notifications → Block.</p>`;
+    // Re-register to refresh token
+    registerToken().catch(() => {});
+  } else if (perm === "denied") {
+    icon.className = "fa-solid fa-bell-slash text-2xl text-red-500";
+    wrap.className = wrap.className.replace("bg-gray-100", "bg-red-100");
+    title.textContent = "Notifications blocked";
+    desc.textContent  = "You blocked notifications for this site. Allow them in browser settings.";
+    acts.innerHTML = `
+      <div class="bg-amber-50 border border-amber-200 rounded-lg p-3 text-xs text-amber-800">
+        <strong>How to unblock:</strong><br>
+        Chrome/Android: Settings → Site Settings → Notifications → trypbot.duckdns.org → Allow<br>
+        Chrome/Desktop: Click the lock icon in the address bar → Notifications → Allow
+      </div>`;
+  } else {
+    title.textContent = "Notifications off";
+    desc.textContent  = "Enable to get alerts for new leads, messages and reminders.";
+    acts.innerHTML = `
+      <button onclick="askPermission()" class="w-full text-sm bg-green-600 hover:bg-green-700 text-white font-semibold px-4 py-3 rounded-lg transition-colors flex items-center justify-center gap-2">
+        <i class="fa-solid fa-bell"></i> Enable Notifications
+      </button>`;
+  }
+}
+
+window.askPermission = async function() {
+  const perm = await Notification.requestPermission();
+  if (perm === "granted") {
+    await registerToken().catch(err => console.warn("[push]", err));
+    await loadDevices();
+  }
+  renderStatus();
+};
+
+window.testNotif = function() {
+  if (Notification.permission === "granted") {
+    new Notification("TrypBot CRM", {
+      body: "Notifications are working!",
+      icon: "/static/crm/icon-192.png",
+      badge: "/static/crm/badge-72.png",
+    });
+  }
+};
+
+renderStatus();
+loadDevices();
+{% else %}
+document.getElementById("notifStatusTitle").textContent = "Firebase not configured";
+document.getElementById("notifStatusDesc").textContent  = "Set FIREBASE keys in .env on the server.";
+document.getElementById("notifActions").innerHTML = "";
+document.getElementById("deviceList").textContent = "-";
+{% endif %}
+</script>
+{% endblock %}

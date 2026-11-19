@@ -267,6 +267,17 @@
         <span class="text-[9px] leading-none opacity-80">Itinerary</span>
       </a>
 
+      <!-- Notification Settings -->
+      <a href="{% url 'crm_notification_settings' %}" title="Notification Settings"
+         class="sidebar-link flex flex-col items-center gap-0.5 w-full py-2.5 px-1 hover:bg-white/10 transition-colors
+                {% if request.resolver_match.url_name == 'crm_notification_settings' %}bg-white/15{% endif %}"
+         id="sidebarNotifLink">
+        <span class="relative">
+          <i class="fa-solid fa-bell-slash text-lg" id="sidebarNotifIcon"></i>
+        </span>
+        <span class="text-[9px] leading-none opacity-80">Notifs</span>
+      </a>
+
       <!-- Settings -->
       <a href="/admin/" target="_blank" title="Settings"
          class="sidebar-link flex flex-col items-center gap-0.5 w-full py-2.5 px-1 hover:bg-white/10 transition-colors">
@@ -421,5 +432,15 @@
   })();
 </script>
 {% block extra_scripts %}{% endblock %}
+<script>
+// Sidebar notification icon: bell if granted, bell-slash otherwise
+(function() {
+  const icon = document.getElementById('sidebarNotifIcon');
+  if (!icon) return;
+  if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+    icon.className = 'fa-solid fa-bell text-lg';
+  }
+})();
+</script>
 </body>
 </html>
