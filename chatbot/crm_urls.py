@@ -76,12 +76,6 @@ urlpatterns = [
         name="crm_check_assignments"
     ),
 
-    path(
-        "notifications/",
-        crm_views.crm_check_assignments,
-        name="crm_notifications"
-    ),
-
     # --------------------------------------------------
     # NOTES
     # --------------------------------------------------
