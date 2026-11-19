@@ -62,7 +62,7 @@
 {% block extra_scripts %}
 <script type="module">
 {% if push_enabled %}
-import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import { initializeApp, getApps, getApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import { getMessaging, getToken, isSupported } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-messaging.js";
 
 const CONFIG   = {{ config_json|safe }};
@@ -76,9 +76,13 @@ function csrf() {
   return document.querySelector('meta[name="csrf-token"]')?.content || "";
 }
 
+function getFirebaseApp() {
+  return getApps().length ? getApp() : initializeApp(CONFIG);
+}
+
 async function registerToken() {
   const reg = await navigator.serviceWorker.register(SW_URL, { scope: "/crm/" });
-  const messaging = getMessaging(initializeApp(CONFIG));
+  const messaging = getMessaging(getFirebaseApp());
   const token = await getToken(messaging, { vapidKey: VAPID, serviceWorkerRegistration: reg });
   if (!token) throw new Error("No token returned");
   await fetch(REG_URL, {
