@@ -644,7 +644,24 @@ def _auto_reply_and_transfer(session, user_number, message_text, user_message_id
     """
     from .utils import _save_bot_reply_to_crm
 
-    reply = settings.WHATSAPP_AUTO_REPLY_TEXT
+    # Keyword-based reply: 1-day trip queries get the AI Trip Planner link
+    _1DAY_KEYWORDS = [
+        "1 day trip", "1 day tour", "one day trip", "one day tour",
+        "1 day plan", "one day plan", "1 din", "ek din", "day trip",
+        "day tour", "1 day package", "one day package", "1 day itinerary",
+        "one day itinerary", "1 day travel", "ai planner 1 day",
+    ]
+    msg_lower = message_text.lower()
+    if any(k in msg_lower for k in _1DAY_KEYWORDS):
+        reply = (
+            "Plan your perfect trip with our AI Trip Planner! 🌟\n\n"
+            "Share your destination, dates, and budget — and get a custom itinerary in minutes.\n\n"
+            "👉 https://www.trypdeals.com/ai-trip-planner/\n\n"
+            "Or reply here with your trip details and our team will help you plan it!"
+        )
+        print(f"[AUTO REPLY] 1-day keyword matched — sending AI Trip Planner link")
+    else:
+        reply = settings.WHATSAPP_AUTO_REPLY_TEXT
     try:
         whatsapp_response = send_whatsapp_message(user_number, reply, [], user_message_id=user_message_id)
     except Exception as e:
@@ -1212,6 +1229,34 @@ def whatsapp_webhook(request):
             except Exception as e:
                 print(f"Failed to send notification: {e}")
             return Response({"success": True, "human_takeover": True})
+
+        # --------------------------------------------------
+        # 1-DAY TRIP KEYWORD — always reply with AI Trip Planner link
+        # Fires before AI-on/off split so it works in all modes.
+        # --------------------------------------------------
+        if not is_flow_submission:
+            _1DAY_KW = [
+                "1 day trip", "1 day tour", "one day trip", "one day tour",
+                "1 day plan", "one day plan", "1 din", "ek din", "day trip",
+                "day tour", "1 day package", "one day package", "1 day itinerary",
+                "one day itinerary", "1 day travel", "ai planner 1 day",
+                "1 day", "one day", "ek din ka",
+            ]
+            _msg_lower = message_text.lower()
+            if any(k in _msg_lower for k in _1DAY_KW):
+                _1day_reply = (
+                    "Plan your perfect trip with our AI Trip Planner! 🌟\n\n"
+                    "Share your destination, dates, and budget — and get a custom itinerary in minutes.\n\n"
+                    "👉 https://www.trypdeals.com/ai-trip-planner/\n\n"
+                    "Or reply here with your trip details and our team will help you plan it!"
+                )
+                print(f"[AUTO REPLY] 1-day keyword matched in '{_msg_lower[:60]}' — sending AI Trip Planner link")
+                from .utils import _save_bot_reply_to_crm
+                _send_plain_text(user_number, _1day_reply)
+                _save_bot_reply_to_crm(session, _1day_reply)
+                session.data["_processing"] = False
+                session.save()
+                return Response({"success": True, "auto_1day": True})
 
         # --------------------------------------------------
         # AI OFF — one fixed reply, then hand the chat to a sales agent
