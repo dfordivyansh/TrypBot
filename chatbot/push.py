@@ -90,6 +90,7 @@ def _send(user_id, title, body, url, tag):
     try:
         sa = _service_account()
         tokens = list(PushDevice.objects.filter(user_id=user_id).values_list("token", flat=True))
+        print(f"[PUSH] _send: user_id={user_id}, tokens={len(tokens)}, sa={'ok' if sa else 'MISSING'}")
         if not sa or not tokens:
             return
         project = sa.get("project_id") or settings.FIREBASE_WEB_CONFIG.get("projectId")
@@ -120,8 +121,13 @@ def _send(user_id, title, body, url, tag):
 def notify_user(user, title, body, url="/crm/", tag=""):
     """Notify a user's devices in the background, once the current DB transaction is saved."""
     user_id = getattr(user, "pk", user)
-    if not user_id or not is_configured():
+    if not user_id:
+        print(f"[PUSH] notify_user: no user_id, skipping")
         return
+    if not is_configured():
+        print(f"[PUSH] notify_user: Firebase not configured (service account missing), skipping")
+        return
+    print(f"[PUSH] notify_user: queuing for user_id={user_id}, title={title!r}")
     transaction.on_commit(lambda: threading.Thread(
         target=_send, args=(user_id, title, body, url, tag), daemon=True).start())
 
