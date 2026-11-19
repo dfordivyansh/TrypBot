@@ -1,0 +1,25 @@
+{
+  "name": "TrypBot CRM",
+  "short_name": "TrypBot",
+  "description": "TrypBot CRM — manage leads, chats and bookings",
+  "start_url": "/crm/",
+  "scope": "/crm/",
+  "display": "standalone",
+  "background_color": "#0d5c38",
+  "theme_color": "#0d5c38",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "/static/crm/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/static/crm/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
