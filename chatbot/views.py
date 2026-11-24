@@ -1245,10 +1245,8 @@ def whatsapp_webhook(request):
             _msg_lower = message_text.lower()
             if any(k in _msg_lower for k in _1DAY_KW):
                 _1day_reply = (
-                    "Plan your perfect trip with our AI Trip Planner! 🌟\n\n"
-                    "Share your destination, dates, and budget — and get a custom itinerary in minutes.\n\n"
-                    "👉 https://www.trypdeals.com/ai-trip-planner/\n\n"
-                    "Or reply here with your trip details and our team will help you plan it!"
+                    "Click on this link to book your 1 Day Tour Package:\n"
+                    "https://www.trypdeals.com/ai-trip-planner/"
                 )
                 print(f"[AUTO REPLY] 1-day keyword matched in '{_msg_lower[:60]}' — sending AI Trip Planner link")
                 from .utils import _save_bot_reply_to_crm
