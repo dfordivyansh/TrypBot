@@ -24,9 +24,6 @@ from django.db import close_old_connections, transaction
 
 FCM_SCOPE = "https://www.googleapis.com/auth/firebase.messaging"
 
-_access = {"token": None, "expires": 0}
-_access_lock = threading.Lock()
-
 
 def _service_account():
     path = getattr(settings, "FIREBASE_SERVICE_ACCOUNT_FILE", "")
@@ -49,31 +46,25 @@ def _b64(data):
 
 
 def _access_token(sa):
-    """OAuth access token for FCM, from a JWT signed with the service account key."""
+    """OAuth access token for FCM, fresh every call — no caching."""
     from cryptography.hazmat.primitives import hashes, serialization
     from cryptography.hazmat.primitives.asymmetric import padding
 
-    with _access_lock:
-        if _access["token"] and _access["expires"] - 120 > time.time():
-            return _access["token"]
-        now = int(time.time())
-        token_uri = sa.get("token_uri") or "https://oauth2.googleapis.com/token"
-        header = _b64(json.dumps({"alg": "RS256", "typ": "JWT"}).encode())
-        claims = _b64(json.dumps({
-            "iss": sa["client_email"], "scope": FCM_SCOPE, "aud": token_uri,
-            "iat": now, "exp": now + 3600,
-        }).encode())
-        key = serialization.load_pem_private_key(sa["private_key"].encode(), password=None)
-        signature = key.sign(header + b"." + claims, padding.PKCS1v15(), hashes.SHA256())
-        assertion = (header + b"." + claims + b"." + _b64(signature)).decode()
-        res = requests.post(token_uri, data={
-            "grant_type": "urn:ietf:params:oauth:grant-type:jwt-bearer", "assertion": assertion,
-        }, timeout=15)
-        res.raise_for_status()
-        body = res.json()
-        _access["token"] = body["access_token"]
-        _access["expires"] = now + int(body.get("expires_in", 3600))
-        return _access["token"]
+    now = int(time.time())
+    token_uri = sa.get("token_uri") or "https://oauth2.googleapis.com/token"
+    header = _b64(json.dumps({"alg": "RS256", "typ": "JWT"}).encode())
+    claims = _b64(json.dumps({
+        "iss": sa["client_email"], "scope": FCM_SCOPE, "aud": token_uri,
+        "iat": now, "exp": now + 3600,
+    }).encode())
+    key = serialization.load_pem_private_key(sa["private_key"].encode(), password=None)
+    signature = key.sign(header + b"." + claims, padding.PKCS1v15(), hashes.SHA256())
+    assertion = (header + b"." + claims + b"." + _b64(signature)).decode()
+    res = requests.post(token_uri, data={
+        "grant_type": "urn:ietf:params:oauth:grant-type:jwt-bearer", "assertion": assertion,
+    }, timeout=15)
+    res.raise_for_status()
+    return res.json()["access_token"]
 
 
 def _token_is_dead(res):
